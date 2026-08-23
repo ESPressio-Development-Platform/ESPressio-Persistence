@@ -1,23 +1,41 @@
 # ESPressio Persistence dependency position
 
-ESPressio Persistence 0.1.0 deliberately has **no required dependency on another ESPressio library**.
+ESPressio Persistence 0.2.0 keeps its **core storage layer dependency-free** while adding an opt-in integration with ESPressio Serializable.
 
 ```text
-Persistence 0.1.0
+Persistence core 0.2.0
     -> none
+
+Persistence Serializable integration
+    - - -> Serializable >= 0.10.3 < 1.0.0
 ```
 
-The core abstraction is intended to sit beneath higher-level facilities such as Serializable document persistence and ESPressio-Web static-asset storage.
+The optional edge exists only for consumers that include:
 
-Planned optional integration direction:
+```cpp
+#include <ESPressio_Persistence_Serializable.hpp>
+```
+
+Core consumers using `ESPressio_Persistence.hpp` or `ESPressio_ESP32Persistence.hpp` do not acquire Serializable as a required dependency.
+
+Dependency direction is intentionally one-way:
+
+```text
+Serializable
+    ^
+    : optional
+    :
+Persistence
+```
+
+Serializable remains foundational and has no knowledge of Persistence or storage media.
+
+Future optional integration direction:
 
 ```text
 Persistence
-    - - -> Serializable   typed object/document persistence
     - - -> Security       encryption/integrity policy (future)
 
 Web
     - - -> Persistence    static assets/configuration (future)
 ```
-
-These optional edges are architectural direction only; they are not part of Persistence 0.1.0.
