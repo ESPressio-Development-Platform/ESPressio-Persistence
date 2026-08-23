@@ -1,59 +1,88 @@
 # Architecture
 
-ESPressio Persistence keeps storage mechanics below domain serialization and application policy.
+ESPressio Persistence keeps storage mechanics below domain serialization and cryptographic policy.
 
 ```text
-application/domain objects
+application/domain object
         |
-        | optional typed persistence
         v
-ESPressio Serializable / ESPB BinaryArchive
+ESPressio Serializable
         |
-        +-------------------------------+
-        |                               |
-  IFileStorage                    IKeyValueStorage
-        |                               |
- filesystem media                  NVS-like stores
+        +---- ordinary ESPB --------------------+
+        |                                       |
+        +---- optional authenticated protection |
+                    |                            |
+                    v                            |
+             ESPressio Security                  |
+                    |                            |
+                    +----------------------------+
+                                                 |
+                          +----------------------+
+                          |                      |
+                    IFileStorage          IKeyValueStorage
+                          |                      |
+                  filesystem media          NVS-like stores
 ```
 
 ## Design boundaries
 
 - `IStorageBackend` owns lifecycle, readiness, capability discovery and statistics.
-- `IFileStorage` owns hierarchical byte storage semantics.
-- `IKeyValueStorage` owns namespaced key/value byte storage semantics.
-- `AtomicFileStore` is a policy/helper layered above `IFileStorage`, not a filesystem assumption hidden inside `Write()`.
-- Concrete ESP32 adapters translate Arduino framework APIs into these contracts.
+- `IFileStorage` owns hierarchical byte-storage semantics.
+- `IKeyValueStorage` owns namespaced key/value byte-storage semantics.
+- `AtomicFileStore` is a policy/helper layered above `IFileStorage`.
+- Concrete ESP32 adapters translate platform storage APIs into ESPressio contracts.
 - Host-memory adapters allow application persistence logic to be tested without hardware.
-- `ESPressio_Persistence_Serializable.hpp` is an optional adapter layered above the raw storage interfaces.
-- Serializable remains lower-order: it defines object schema/representation facilities and knows nothing about Persistence.
+- `ESPressio_Persistence_Serializable.hpp` adds optional unprotected typed persistence.
+- `ESPressio_Persistence_Serializable_Security.hpp` adds optional protected typed persistence.
+- Persistence never selects ciphers, manages keys or performs encryption itself.
 
 ## Typed persistence representation
 
-The initial typed integration uses Serializable's ESPB `BinaryArchive` rather than the direct-binary fast path.
+Typed persistence uses Serializable's ESPB `BinaryArchive`, retaining tree-based migration/default/alias/validation support for records that outlive the firmware version that produced them.
 
-This is deliberate for persisted data. `BinaryArchive` reconstructs the tree representation used by `DeserializeDetailed()`, allowing aliases, defaults, validation and declared structural migrations to be applied when firmware reads data written by an earlier schema version.
+Unprotected:
 
 ```text
 Serializable object
-        |
-        v
-BinaryArchive (ESPB)
-        |
-        v
-byte payload
-        |
-        v
-IFileStorage / IKeyValueStorage
+    -> BinaryArchive / ESPB
+    -> storage bytes
 ```
 
-The storage backend never interprets the object schema. LittleFS, Preferences/NVS, SD and memory backends all receive the same opaque byte payload.
+Protected:
+
+```text
+Serializable object
+    -> BinaryArchive / ESPB
+    -> SerializationProtectionConfig
+    -> Security::IDataProtector
+    -> authenticated protected bytes
+    -> storage
+```
+
+Loading reverses this order. Authentication/unprotection occurs before BinaryArchive decoding or model deserialization.
+
+## Dependency boundaries
+
+```text
+Persistence core
+    -> none
+
+Persistence typed integration
+    - - -> Serializable
+
+Persistence protected typed integration
+    - - -> Serializable
+            - - -> Security
+```
+
+Persistence has no direct cryptographic dependency. Serializable remains responsible for representation and delegates protection through its optional Security integration.
 
 ## Reliability boundaries
 
-Typed persistence adds bounded full-payload materialization above the low-level bounded interfaces. `SerializablePersistenceOptions::MaximumPayloadBytes` defaults to 64 KiB, while Serializable's `BinaryArchiveDecodeLimits` constrain nested structure during decode.
-
-For file backends, save operations prefer `AtomicFileStore` whenever rename is supported. File backends without rename remain valid and fall back to ordinary replacement. Key/value stores use their native replacement semantics.
-
-`SerializablePersistenceResult` retains both integration-level status and underlying `StorageStatus`, and carries structured Serializable deserialization diagnostics where schema/validation errors occur.
-
-Checksums beyond ESPB structural validation, generation journals, encryption and application-specific recovery policy remain appropriate future layers above these contracts.
+- Typed payloads are bounded by explicit archive limits.
+- Protected payloads authenticate before parsing.
+- File saves prefer `AtomicFileStore` when rename is supported.
+- File backends without rename fall back to ordinary replacement when requested.
+- Key/value stores use their backend replacement semantics.
+- Result types retain storage failure separately from serialization/security failure.
+- Power-loss durability still depends on the physical filesystem/media; protection guarantees confidentiality/integrity, not transactional storage by itself.
