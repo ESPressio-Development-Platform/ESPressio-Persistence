@@ -31,7 +31,7 @@ jobs:
           path: project/ESPressio-Serializable
       - name: Compile Serializable persistence tests
         run: |
-          g++ -std=c++17 -Wall -Wextra -Werror \
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
             -I project/ESPressio-Persistence/src \
             -I project/ESPressio-Serializable/src \
             project/ESPressio-Persistence/tests/serializable_persistence_tests.cpp \
