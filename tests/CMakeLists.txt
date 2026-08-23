@@ -1,0 +1,3 @@
+add_executable(espressio_persistence_tests persistence_tests.cpp)
+target_link_libraries(espressio_persistence_tests PRIVATE ESPressioPersistence)
+add_test(NAME espressio_persistence_tests COMMAND espressio_persistence_tests)
