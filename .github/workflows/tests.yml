@@ -27,8 +27,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Serializable
-          ref: 0.10.3
+          ref: 0.11.0
           path: project/ESPressio-Serializable
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Security
+          ref: 0.4.0
+          path: project/ESPressio-Security
       - name: Compile Serializable persistence tests
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
@@ -36,8 +41,16 @@ jobs:
             -I project/ESPressio-Serializable/src \
             project/ESPressio-Persistence/tests/serializable_persistence_tests.cpp \
             -o project/serializable_persistence_tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
+            -I project/ESPressio-Persistence/src \
+            -I project/ESPressio-Serializable/src \
+            -I project/ESPressio-Security/src \
+            project/ESPressio-Persistence/tests/protected_serializable_persistence_tests.cpp \
+            -o project/protected_serializable_persistence_tests
       - name: Run Serializable persistence tests
-        run: project/serializable_persistence_tests
+        run: |
+          project/serializable_persistence_tests
+          project/protected_serializable_persistence_tests
 
   esp32-compile:
     runs-on: ubuntu-latest
@@ -48,8 +61,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Serializable
-          ref: 0.10.3
+          ref: 0.11.0
           path: project/ESPressio-Serializable
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Security
+          ref: 0.4.0
+          path: project/ESPressio-Security
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Observable
+          ref: 3.0.2
+          path: project/ESPressio-Observable
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -64,51 +87,53 @@ jobs:
           platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip
           board = esp32dev
           framework = arduino
-          build_flags = -std=gnu++17
-          build_unflags = -std=gnu++11
+          build_flags = -std=gnu++17 -frtti
+          build_unflags = -std=gnu++11 -fno-rtti
           lib_deps =
               ../ESPressio-Persistence
               ../ESPressio-Serializable
+              ../ESPressio-Security
+              ../ESPressio-Observable
           EOF
           cat > project/compile/src/main.cpp <<'EOF'
           #include <Arduino.h>
           #include <ESPressio_ESP32Persistence.hpp>
           #include <ESPressio_Persistence_Serializable.hpp>
+          #include <ESPressio_Persistence_Serializable_Security.hpp>
+          #include <ESPressio_Security.hpp>
 
           using namespace ESPressio;
           using namespace ESPressio::Persistence;
 
-          class Configuration final
-              : public Serializable::Serializable<Configuration> {
+          class Configuration final : public Serializable::Serializable<Configuration> {
               ESPRESSIO_SERIALIZABLE_TYPE(Configuration)
               ESPRESSIO_SERIALIZABLE_SCHEMA_VERSION(1)
           private:
               uint32_t _counter = 0;
           public:
-              ESPRESSIO_SERIALIZABLE_PROPERTIES(
-                  ESPRESSIO_PROPERTY("counter", _counter)
-              )
+              ESPRESSIO_SERIALIZABLE_PROPERTIES(ESPRESSIO_PROPERTY("counter", _counter))
           };
 
           LittleFSStorage littlefs(false);
-          SPIFFSStorage spiffs(false);
-          FFatStorage ffat(false);
           PreferencesStorage preferences("test");
-          SDStorage sd(5);
-          SDMMCStorage sdmmc(true);
+          Security::AES256GCMCipher cipher;
+          Security::AeadCipherRegistry ciphers;
+          Security::StaticKeyProvider keys;
+          Security::ESP32RandomSource randomSource;
 
           void setup() {
+              uint8_t key[32]{};
+              ciphers.Register(cipher);
+              keys.Add(1, Security::AeadAlgorithm::AES256GCM, key, sizeof(key));
+              Security::DataProtector protector(ciphers, keys, randomSource);
+              Serializable::SerializationProtectionConfig protection(protector, "test.config");
               Configuration value;
-              (void)SaveSerializable(littlefs, "/value.bin", value);
-              (void)LoadSerializable(littlefs, "/value.bin", value);
-              (void)SaveSerializable(preferences, "value", value);
-              (void)LoadSerializable(preferences, "value", value);
-              (void)spiffs.GetCapabilities();
-              (void)ffat.GetCapabilities();
-              (void)sd.GetCapabilities();
-              (void)sdmmc.GetCapabilities();
+              (void)SaveSerializable(littlefs, "/value.bin", value, protection);
+              (void)LoadSerializable(littlefs, "/value.bin", value, protection);
+              (void)SaveSerializable(preferences, "value", value, protection);
+              (void)LoadSerializable(preferences, "value", value, protection);
           }
           void loop() {}
           EOF
-      - name: Compile ESP32 backend and Serializable surface
+      - name: Compile ESP32 protected Serializable surface
         run: pio run -d project/compile
