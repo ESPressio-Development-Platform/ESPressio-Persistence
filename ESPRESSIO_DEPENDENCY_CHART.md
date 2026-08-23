@@ -1,41 +1,39 @@
-# ESPressio Persistence dependency position
+# ESPressio Persistence dependency position — 0.3.0
 
-ESPressio Persistence 0.2.0 keeps its **core storage layer dependency-free** while adding an opt-in integration with ESPressio Serializable.
+ESPressio Persistence keeps its **core storage layer dependency-free** while exposing opt-in typed and protected-typed integrations.
 
 ```text
-Persistence core 0.2.0
+Persistence core 0.3.0
     -> none
 
 Persistence Serializable integration
-    - - -> Serializable >= 0.10.3 < 1.0.0
+    - - -> Serializable >= 0.11.0 < 1.0.0
+
+Persistence protected Serializable integration
+    - - -> Serializable >= 0.11.0 < 1.0.0
+            - - -> Security >= 0.4.0 < 1.0.0
 ```
 
-The optional edge exists only for consumers that include:
+Headers make the distinction explicit:
 
 ```cpp
+#include <ESPressio_Persistence.hpp>
 #include <ESPressio_Persistence_Serializable.hpp>
+#include <ESPressio_Persistence_Serializable_Security.hpp>
 ```
 
-Core consumers using `ESPressio_Persistence.hpp` or `ESPressio_ESP32Persistence.hpp` do not acquire Serializable as a required dependency.
+Persistence does **not** depend directly on Security. It consumes Serializable's protection configuration and protected archive API; Serializable delegates authenticated encryption to Security.
 
-Dependency direction is intentionally one-way:
+Dependency direction remains one-way:
 
 ```text
+Security
+   ^ optional through Serializable
 Serializable
-    ^
-    : optional
-    :
+   ^ optional
 Persistence
 ```
 
-Serializable remains foundational and has no knowledge of Persistence or storage media.
+Neither Security nor Serializable knows about storage media or depends back on Persistence.
 
-Future optional integration direction:
-
-```text
-Persistence
-    - - -> Security       encryption/integrity policy (future)
-
-Web
-    - - -> Persistence    static assets/configuration (future)
-```
+This positioning is intended to support downstream consumers such as ESPressio WiFi and ESPressio Web without coupling those libraries to LittleFS/NVS/SD implementations or to cryptographic primitives.
