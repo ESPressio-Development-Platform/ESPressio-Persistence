@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file.
 
 The structure follows Keep a Changelog and Semantic Versioning principles.
 
+## [0.3.0] - 2026-08-23
+
+### Added
+
+- Added optional `ESPressio_Persistence_Serializable_Security.hpp` integration.
+- Added protected `SaveSerializable()` / `LoadSerializable()` overloads for every `IFileStorage` implementation.
+- Added protected `SaveSerializable()` / `LoadSerializable()` overloads for every `IKeyValueStorage` implementation.
+- Added `ProtectedSerializablePersistenceResult`, preserving storage status separately from Serializable/Security protection and deserialization status.
+- Preserved automatic `AtomicFileStore` use for protected file saves where rename is supported, with an explicit ordinary-replace fallback option.
+- Added protected file and key/value round-trip tests, authenticated-context failure coverage, atomic cleanup verification and unprotected compatibility coverage.
+- Extended ESP32 CI compile validation to protected LittleFS and Preferences/NVS typed persistence.
+
+### Design
+
+- Persistence does not implement encryption and does not depend directly on cryptographic algorithms.
+- The protected integration consumes `SerializationProtectionConfig` from Serializable 0.11.x; Serializable delegates protection to Security's `IDataProtector`.
+- Core byte storage and ordinary typed persistence remain usable without Security.
+
+### Compatibility
+
+- Backward-compatible interface extension from 0.2.0 to 0.3.0.
+- Existing unprotected `SaveSerializable()` / `LoadSerializable()` calls remain unchanged.
+
+### Tracking
+
+- Implements #3.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added
@@ -23,29 +50,21 @@ The structure follows Keep a Changelog and Semantic Versioning principles.
 ### Changed
 
 - Package version advanced to 0.2.0 because this release extends the public Persistence interface without breaking 0.1.x consumers.
-- Dependency documentation now records ESPressio Serializable as an optional integration rather than a future-only direction.
+- Dependency documentation records ESPressio Serializable as an optional integration.
 
 ### Compatibility
 
 - Existing 0.1.x storage interfaces and concrete backends remain source-compatible.
 - ESPressio Serializable remains optional; core-only Persistence consumers acquire no new required ESPressio dependency.
-- Serializable remains lower-order and does not depend on Persistence.
 
 ## [0.1.0] - 2026-08-23
 
 ### Added
 
 - Initial ESPressio Persistence architecture.
-- Capability-aware `IStorageBackend` lifecycle and diagnostics contract.
-- Separate `IFileStorage` and `IKeyValueStorage` abstractions so hierarchical filesystems and NVS-style stores retain appropriate semantics.
-- Bounded byte-oriented read/write interfaces suitable for embedded applications.
-- Storage status, capability, statistics and directory-entry types.
-- `AtomicFileStore` best-effort temporary/backup/rename replacement helper.
-- Host-friendly `MemoryFileStorage` and `MemoryKeyValueStorage` implementations.
-- Optional ESP32 Arduino backends for LittleFS, SPIFFS, FFat, Preferences/NVS, SD over SPI and SD_MMC.
-- Backend selection documentation and consumer examples.
-- Host unit tests plus ESP32 compile validation in CI.
-
-### Compatibility
-
-- Initial pre-release API; no previous public API exists.
+- Capability-aware `IStorageBackend`, `IFileStorage` and `IKeyValueStorage` contracts.
+- Bounded byte-oriented read/write interfaces.
+- `AtomicFileStore` best-effort replacement helper.
+- Host `MemoryFileStorage` and `MemoryKeyValueStorage` implementations.
+- ESP32 LittleFS, SPIFFS, FFat, Preferences/NVS, SD/SPI and SD_MMC backends.
+- Backend-selection documentation, host unit tests and ESP32 compile validation.
