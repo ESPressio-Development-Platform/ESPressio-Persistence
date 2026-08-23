@@ -2,16 +2,15 @@
 #include <array>
 #include <cassert>
 #include <cstring>
-#include <string>
-#include <vector>
 
 using namespace ESPressio::Persistence;
 
-static void TestCapabilities() {
+static void TestCapabilitiesAndStatusNames() {
     const auto capabilities = StorageCapability::Hierarchical | StorageCapability::Rename;
     assert(HasCapability(capabilities, StorageCapability::Hierarchical));
     assert(HasCapability(capabilities, StorageCapability::Rename));
     assert(!HasCapability(capabilities, StorageCapability::KeyValue));
+    assert(std::strcmp(StorageStatusName(StorageStatus::NoSpace), "NoSpace") == 0);
 }
 
 static void TestMemoryFileLifecycleAndValidation() {
@@ -44,6 +43,10 @@ static void TestFileWriteReadAppendStatRenameAndRemove() {
     assert(bytesRead == 3);
     assert((buffer == std::array<uint8_t, 3>{2, 3, 4}));
 
+    bytesRead = 99;
+    assert(storage.Read("/data.bin", 5, buffer.data(), buffer.size(), bytesRead) == StorageStatus::Success);
+    assert(bytesRead == 0);
+
     assert(storage.Rename("/data.bin", "/renamed.bin") == StorageStatus::Success);
     bool exists = false;
     assert(storage.Exists("/renamed.bin", exists) == StorageStatus::Success && exists);
@@ -51,9 +54,11 @@ static void TestFileWriteReadAppendStatRenameAndRemove() {
     assert(storage.Remove("/renamed.bin") == StorageStatus::NotFound);
 }
 
+struct ListState { std::size_t count = 0; std::size_t stopAfter = 0; };
 static bool CountEntries(const StorageEntry&, void* context) {
-    ++(*static_cast<std::size_t*>(context));
-    return true;
+    auto& state = *static_cast<ListState*>(context);
+    ++state.count;
+    return state.stopAfter == 0 || state.count < state.stopAfter;
 }
 
 static void TestDirectoriesAndListing() {
@@ -62,20 +67,57 @@ static void TestDirectoriesAndListing() {
     assert(storage.CreateDirectory("/config") == StorageStatus::Success);
     const uint8_t value = 9;
     assert(storage.Write("/config/a.bin", &value, 1) == StorageStatus::Success);
-    std::size_t count = 0;
-    assert(storage.List("/", CountEntries, &count) == StorageStatus::Success);
-    assert(count >= 2);
+    ListState all{};
+    assert(storage.List("/", CountEntries, &all) == StorageStatus::Success);
+    assert(all.count >= 2);
+    ListState early{0, 1};
+    assert(storage.List("/", CountEntries, &early) == StorageStatus::Success);
+    assert(early.count == 1);
     assert(storage.RemoveDirectory("/config") == StorageStatus::Success);
 }
 
-static void TestAtomicReplacement() {
-    MemoryFileStorage storage;
+class FailingPromotionStorage final : public IFileStorage {
+public:
+    StorageStatus Initialize() override { return _inner.Initialize(); }
+    void Shutdown() override { _inner.Shutdown(); }
+    bool IsReady() const override { return _inner.IsReady(); }
+    const char* GetBackendName() const override { return "FailingPromotionStorage"; }
+    StorageCapability GetCapabilities() const override { return _inner.GetCapabilities(); }
+    StorageStatistics GetStatistics() const override { return _inner.GetStatistics(); }
+    StorageStatus Exists(const char* p, bool& e) const override { return _inner.Exists(p, e); }
+    StorageStatus Stat(const char* p, StorageEntry& e) const override { return _inner.Stat(p, e); }
+    StorageStatus Read(const char* p, uint64_t o, uint8_t* b, std::size_t c, std::size_t& r) const override { return _inner.Read(p, o, b, c, r); }
+    StorageStatus Write(const char* p, const uint8_t* d, std::size_t s, WriteMode m) override { return _inner.Write(p, d, s, m); }
+    StorageStatus Remove(const char* p) override { return _inner.Remove(p); }
+    StorageStatus Rename(const char* from, const char* to) override {
+        if (_failPromotion && std::strstr(from, ".tmp") != nullptr) {
+            _failPromotion = false;
+            return StorageStatus::IoError;
+        }
+        return _inner.Rename(from, to);
+    }
+    StorageStatus CreateDirectory(const char* p) override { return _inner.CreateDirectory(p); }
+    StorageStatus RemoveDirectory(const char* p) override { return _inner.RemoveDirectory(p); }
+    StorageStatus List(const char* p, StorageListCallback c, void* x) const override { return _inner.List(p, c, x); }
+    void FailNextPromotion() { _failPromotion = true; }
+private:
+    MemoryFileStorage _inner;
+    bool _failPromotion = false;
+};
+
+static void TestAtomicReplacementAndRollback() {
+    FailingPromotionStorage storage;
     assert(storage.Initialize() == StorageStatus::Success);
     AtomicFileStore atomic(storage);
     const uint8_t oldValue[] = {'o','l','d'};
     const uint8_t newValue[] = {'n','e','w'};
-    assert(storage.Write("/settings.bin", oldValue, sizeof(oldValue)) == StorageStatus::Success);
+    assert(storage.Write("/settings.bin", oldValue, sizeof(oldValue), WriteMode::Replace) == StorageStatus::Success);
     assert(atomic.Replace("/settings.bin", newValue, sizeof(newValue)) == StorageStatus::Success);
+
+    storage.FailNextPromotion();
+    const uint8_t failedValue[] = {'b','a','d'};
+    assert(atomic.Replace("/settings.bin", failedValue, sizeof(failedValue)) == StorageStatus::IoError);
+
     std::array<uint8_t, 3> result{};
     std::size_t bytesRead = 0;
     assert(storage.Read("/settings.bin", 0, result.data(), result.size(), bytesRead) == StorageStatus::Success);
@@ -102,16 +144,23 @@ static void TestKeyValueStorage() {
     std::array<uint8_t, 4> result{};
     assert(storage.Read("mode", result.data(), result.size(), bytesRead) == StorageStatus::Success);
     assert(bytesRead == 4 && std::memcmp(result.data(), payload, 4) == 0);
+
+    assert(storage.Write("empty", nullptr, 0) == StorageStatus::Success);
+    assert(storage.GetSize("empty", size) == StorageStatus::Success && size == 0);
+    bytesRead = 99;
+    assert(storage.Read("empty", nullptr, 0, bytesRead) == StorageStatus::Success && bytesRead == 0);
+
     assert(storage.Remove("mode") == StorageStatus::Success);
+    assert(storage.Remove("missing") == StorageStatus::NotFound);
     assert(storage.Clear() == StorageStatus::Success);
 }
 
 int main() {
-    TestCapabilities();
+    TestCapabilitiesAndStatusNames();
     TestMemoryFileLifecycleAndValidation();
     TestFileWriteReadAppendStatRenameAndRemove();
     TestDirectoriesAndListing();
-    TestAtomicReplacement();
+    TestAtomicReplacementAndRollback();
     TestKeyValueStorage();
     return 0;
 }

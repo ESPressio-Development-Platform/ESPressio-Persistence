@@ -1,7 +1,6 @@
 #pragma once
 
 #include <ESPressio_IKeyValueStorage.hpp>
-#include <algorithm>
 #include <cstring>
 #include <map>
 #include <string>
@@ -64,7 +63,11 @@ public:
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(key) || (data == nullptr && size != 0)) return StorageStatus::InvalidArgument;
         auto& value = _values[key];
-        value.assign(data, data + size);
+        if (size == 0) {
+            value.clear();
+        } else {
+            value.assign(data, data + size);
+        }
         return StorageStatus::Success;
     }
 
