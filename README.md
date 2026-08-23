@@ -4,22 +4,22 @@ A capability-aware persistence foundation for the ESPressio Development Platform
 
 ESPressio Persistence gives application code a stable way to store and retrieve data without coupling domain logic to LittleFS, SPIFFS, FAT, SD cards or ESP32 Preferences/NVS.
 
-## Current version — 0.2.0
+## Current version — 0.3.0
 
-0.2.0 adds an **optional ESPressio Serializable integration** so a Serializable object can be persisted and reconstructed through any Persistence file or key/value backend while the core Persistence API remains dependency-free.
+0.3.0 adds **optional authenticated protection for Serializable persistence**. A complete Serializable object can now be serialized, authenticated/encrypted, persisted to any supported file or key/value backend, and restored directly into its concrete type.
 
-## Why Persistence is split into two storage concepts
+Core Persistence remains dependency-free.
 
-A filesystem and NVS are not the same thing. Pretending they are leads to leaky APIs and surprising behaviour.
+# Storage concepts
 
-Persistence therefore exposes two explicit contracts:
+Persistence intentionally separates filesystems from key/value stores:
 
 ```text
 IFileStorage
     hierarchical paths
     files/directories
     bounded reads
-    replace/append writes
+    replace/append
     rename/list/stat
 
 IKeyValueStorage
@@ -28,64 +28,59 @@ IKeyValueStorage
     replace/read/remove/clear
 ```
 
-Both inherit `IStorageBackend`, which supplies initialization, readiness, capability discovery and storage statistics.
+Both inherit `IStorageBackend` for initialization, readiness, capabilities and statistics.
 
 ## Which backend should I choose?
 
 | Need | Recommended backend |
 | --- | --- |
-| Normal configuration/files on ESP32 internal flash | **LittleFS** |
-| Existing project already using SPIFFS | **SPIFFS** |
-| FAT semantics on an internal flash partition | **FFat** |
-| Small settings, flags, IDs, calibration values | **Preferences/NVS** |
-| Removable storage using a generic SPI SD module | **SD** |
-| Higher-throughput/native SD interface | **SD_MMC** |
-| Desktop/unit tests | **MemoryFileStorage / MemoryKeyValueStorage** |
+| Normal files/configuration in internal ESP32 flash | **LittleFS** |
+| Legacy SPIFFS project | **SPIFFS** |
+| FAT semantics in internal flash | **FFat** |
+| Small settings/records | **Preferences/NVS** |
+| External/removable SPI SD | **SD** |
+| Native SD/MMC | **SD_MMC** |
+| Host/unit tests | **MemoryFileStorage / MemoryKeyValueStorage** |
 
-For new ESP32 applications, start with **LittleFS** when you need files and **Preferences/NVS** when you only need small settings.
+# Installation
 
-## Installation
-
-Core Persistence:
+Core:
 
 ```ini
 lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.2.0
+    espressio-development-platform/ESPressio-Persistence@^0.3.0
 ```
 
-Core/host interfaces:
-
-```cpp
-#include <ESPressio_Persistence.hpp>
-```
-
-ESP32 concrete backends:
-
-```cpp
-#include <ESPressio_ESP32Persistence.hpp>
-```
-
-### Optional Serializable integration
-
-Typed persistence is deliberately opt-in. Add Serializable alongside Persistence:
+Typed Serializable persistence:
 
 ```ini
 lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.2.0
-    espressio-development-platform/ESPressio-Serializable@^0.10.3
+    espressio-development-platform/ESPressio-Persistence@^0.3.0
+    espressio-development-platform/ESPressio-Serializable@^0.11.0
 ```
 
-Then include:
+Protected typed persistence additionally requires Security:
+
+```ini
+lib_deps =
+    espressio-development-platform/ESPressio-Persistence@^0.3.0
+    espressio-development-platform/ESPressio-Serializable@^0.11.0
+    espressio-development-platform/ESPressio-Security@^0.4.0
+    espressio-development-platform/ESPressio-Observable@^3.0.2
+```
+
+Headers are deliberately opt-in:
 
 ```cpp
-#include <ESPressio_Persistence_Serializable.hpp>
+#include <ESPressio_Persistence.hpp>                         // raw storage
+#include <ESPressio_ESP32Persistence.hpp>                    // ESP32 backends
+#include <ESPressio_Persistence_Serializable.hpp>            // typed, unprotected
+#include <ESPressio_Persistence_Serializable_Security.hpp>   // typed + protected
 ```
 
-Persistence does **not** list Serializable as a mandatory package dependency. Applications that only need raw file/key-value storage do not acquire it.
+# The easiest protected configuration flow
 
-# Typed Serializable persistence
-
-A Serializable object does not need storage-specific methods. Its normal ESPressio Serializable schema remains authoritative:
+Assume a normal Serializable configuration:
 
 ```cpp
 class DeviceConfiguration final
@@ -95,222 +90,235 @@ class DeviceConfiguration final
     ESPRESSIO_SERIALIZABLE_SCHEMA_VERSION(1)
 
 private:
-    uint32_t _sampleRate = 48000;
-    std::string _deviceName = "camera-a";
-    bool _enabled = true;
+    std::string _ssid = "ESPressio-Lab";
+    std::string _password = "secret";
+    uint8_t _channel = 6;
 
 public:
     ESPRESSIO_SERIALIZABLE_PROPERTIES(
-        ESPRESSIO_PROPERTY("sampleRate", _sampleRate),
-        ESPRESSIO_PROPERTY("deviceName", _deviceName),
-        ESPRESSIO_PROPERTY("enabled", _enabled)
+        ESPRESSIO_PROPERTY("ssid", _ssid),
+        ESPRESSIO_PROPERTY("password", _password),
+        ESPRESSIO_PROPERTY("channel", _channel)
     )
 };
 ```
 
-## Save/load through LittleFS
+Configure Security once and package it in Serializable's protection config:
+
+```cpp
+Security::AES256GCMCipher cipher;
+Security::AeadCipherRegistry ciphers;
+Security::StaticKeyProvider keys;
+Security::ESP32RandomSource randomSource;
+
+ciphers.Register(cipher);
+keys.Add(1, Security::AeadAlgorithm::AES256GCM, keyBytes, 32);
+
+Security::DataProtector protector(ciphers, keys, randomSource);
+
+Serializable::SerializationProtectionConfig protection(
+    protector,
+    "MyApplication.DeviceConfiguration"
+);
+```
+
+Then save through LittleFS:
 
 ```cpp
 LittleFSStorage storage(false);
 storage.Initialize();
 
-DeviceConfiguration configuration;
+DeviceConfiguration config;
 
-auto saved = SaveSerializable(
+auto result = SaveSerializable(
     storage,
-    "/device-config.espb",
-    configuration
-);
-
-DeviceConfiguration restored;
-auto loaded = LoadSerializable(
-    storage,
-    "/device-config.espb",
-    restored
+    "/device-config.esdp",
+    config,
+    protection
 );
 ```
 
-The persisted representation is ESPressio Serializable's **ESPB BinaryArchive**. This is compact, representation-neutral at the model layer, carries schema-version information, and retains the tree/archive path required for Serializable schema migration.
-
-File writes automatically use `AtomicFileStore` when the selected backend advertises rename support. A backend without rename still works: the typed layer falls back to ordinary replace semantics instead of rejecting the storage implementation.
-
-## The same type through Preferences/NVS
+Restore directly into a fresh concrete instance:
 
 ```cpp
-PreferencesStorage storage("camera");
+DeviceConfiguration restored;
+
+auto result = LoadSerializable(
+    storage,
+    "/device-config.esdp",
+    restored,
+    protection
+);
+```
+
+That one call performs:
+
+```text
+DeviceConfiguration
+      ↓
+Serializable BinaryArchive / ESPB
+      ↓
+Security::IDataProtector
+      ↓
+protected bytes
+      ↓
+IFileStorage
+```
+
+Loading performs the exact reverse, including normal Serializable schema migration/default/validation behavior after successful authentication.
+
+# The exact same object through Preferences/NVS
+
+```cpp
+PreferencesStorage storage("wifi");
 storage.Initialize();
 
-DeviceConfiguration configuration;
-
-SaveSerializable(storage, "device", configuration);
+SaveSerializable(
+    storage,
+    "configuration",
+    config,
+    protection
+);
 
 DeviceConfiguration restored;
-LoadSerializable(storage, "device", restored);
+LoadSerializable(
+    storage,
+    "configuration",
+    restored,
+    protection
+);
 ```
 
-There is no NVS-specific method on `DeviceConfiguration` and no filesystem-specific method either. Only the locator changes from a file path to a key.
+The application does not know whether the provider is LittleFS, Preferences, SD, FFat or a test implementation. Only the storage abstraction and locator differ.
 
-## Backend-independent application code
+# Protection is optional
 
-When the application requires file semantics:
+Existing 0.2.x calls remain unchanged:
 
 ```cpp
-template<typename T>
-SerializablePersistenceResult SaveConfig(
-    IFileStorage& storage,
-    const T& configuration
-) {
-    return SaveSerializable(
-        storage,
-        "/configuration.espb",
-        configuration
-    );
-}
+SaveSerializable(storage, "/config.espb", config);
+LoadSerializable(storage, "/config.espb", restored);
 ```
 
-The caller can supply LittleFS, SPIFFS, FFat, SD, SD_MMC or `MemoryFileStorage`.
+Only consumers including `ESPressio_Persistence_Serializable_Security.hpp` acquire the protected integration surface.
 
-For key/value semantics:
+Persistence does **not** implement cryptography itself. The dependency layering is:
 
-```cpp
-template<typename T>
-SerializablePersistenceResult SaveConfig(
-    IKeyValueStorage& storage,
-    const T& configuration
-) {
-    return SaveSerializable(storage, "configuration", configuration);
-}
+```text
+Persistence
+    ↓
+Serializable protected representation
+    ↓
+Security::IDataProtector
 ```
 
-The caller can supply Preferences/NVS or `MemoryKeyValueStorage`.
+This keeps storage policy, serialization/schema policy and cryptography separate.
 
-## Result and diagnostics
+# Protected result handling
 
-Typed operations return `SerializablePersistenceResult` rather than collapsing every failure into a Boolean.
+Protected calls return `ProtectedSerializablePersistenceResult`:
 
 ```cpp
-auto result = LoadSerializable(storage, "/config.espb", config);
+auto result = LoadSerializable(
+    storage,
+    "/config.esdp",
+    restored,
+    protection
+);
 
 if (!result) {
-    Serial.printf(
-        "typed persistence=%s storage=%s\n",
-        SerializablePersistenceStatusName(result.Status),
-        StorageStatusName(result.Storage)
-    );
+    Serial.printf("storage=%s protected-serialization=%s\n",
+        StorageStatusName(result.Storage),
+        Serializable::ProtectedSerializationStatusName(
+            result.Serialization.Status
+        ));
 
-    for (const auto& issue : result.Deserialization.Issues()) {
-        Serial.printf(
-            "schema issue: %s - %s\n",
-            issue.Path.c_str(),
-            issue.Message.c_str()
-        );
+    if (!result.Serialization.SecurityResult.Success) {
+        Serial.printf("security error=%u message=%s\n",
+            static_cast<unsigned>(result.Serialization.SecurityResult.Error),
+            result.Serialization.SecurityResult.Message.c_str());
     }
 }
 ```
 
-Typed status values distinguish:
+This lets callers distinguish storage/media failures from key/authentication failures and from schema/deserialization failures.
 
-- invalid locator/arguments;
-- underlying storage failure;
-- serialization failure;
-- configured payload-size limit violations;
-- malformed/truncated persisted ESPB data; and
-- schema/deserialization/validation failures.
+# File atomicity
 
-The underlying `StorageStatus` is retained for conditions such as `NotFound`, `NoSpace`, `PermissionDenied` and `CorruptData`.
+Protected file saves still use `AtomicFileStore` automatically when the backend advertises rename support:
 
-## Bounded decoding
-
-Persistence defaults to a 64 KiB maximum typed payload so corrupt or inappropriate persistent data cannot casually trigger an unbounded allocation on an embedded device.
-
-```cpp
-SerializablePersistenceOptions options;
-options.MaximumPayloadBytes = 8 * 1024;
-options.DecodeLimits.MaximumDepth = 12;
-options.DecodeLimits.MaximumTotalNodes = 512;
-
-LoadSerializable(storage, "/config.espb", config, options);
+```text
+serialize
+protect
+write temporary
+backup existing target
+promote temporary
+rollback on promotion failure
 ```
 
-Serializable's BinaryArchive decode limits remain available for depth, node count, object members, arrays, property names and strings.
+The protected overload accepts `preferAtomicFileReplace=false` when a caller deliberately wants direct replacement.
 
-## Schema evolution
+# Typed unprotected persistence
 
-Persisted state commonly survives firmware upgrades. The default typed persistence representation therefore uses `BinaryArchive`, not the lower-overhead direct-binary fast path.
-
-`BinaryArchive` reconstructs Serializable's tree representation, allowing `DeserializeDetailed()` to apply declared aliases, defaults, validation and structural schema migrations before populating the current object.
-
-This design intentionally favours long-lived persisted-data correctness over shaving the final allocation from a short-lived wire packet.
-
-# Raw persistence APIs
-
-Typed persistence sits above the existing byte-oriented interfaces. Nothing in 0.2.0 removes or changes the 0.1.x raw APIs.
-
-## Reliable configuration file with LittleFS
+The ordinary typed APIs introduced in 0.2.0 are still available through `ESPressio_Persistence_Serializable.hpp` and use ESPB `BinaryArchive` directly.
 
 ```cpp
-LittleFSStorage storage(false);  // false: never format automatically
+LittleFSStorage files(false);
+files.Initialize();
 
-if (storage.Initialize() == StorageStatus::Success) {
-    AtomicFileStore atomic(storage);
-    const char json[] = R"({"mode":"camera","enabled":true})";
+DeviceConfiguration source;
+SaveSerializable(files, "/config.espb", source);
 
-    atomic.Replace(
-        "/config.json",
-        reinterpret_cast<const uint8_t*>(json),
-        sizeof(json) - 1
-    );
-}
+DeviceConfiguration restored;
+LoadSerializable(files, "/config.espb", restored);
 ```
 
-`AtomicFileStore` writes a temporary file, moves the old value to a backup, promotes the new value, and attempts rollback if promotion fails. Final power-loss guarantees still depend on the filesystem and physical medium.
+The same calls work with `PreferencesStorage` using a key instead of a path.
 
-## Bounded raw read
+# Raw storage remains first-class
+
+Typed persistence is layered above the same low-level APIs. Applications can continue to use bounded byte-oriented storage directly.
 
 ```cpp
 uint8_t buffer[128];
 std::size_t bytesRead = 0;
-
-storage.Read(
-    "/config.json",
-    0,
-    buffer,
-    sizeof(buffer),
-    bytesRead
-);
+storage.Read("/config.bin", 0, buffer, sizeof(buffer), bytesRead);
 ```
 
-The raw contract does not force a `String`, `std::vector`, JSON document or heap allocation on low-level callers.
+`AtomicFileStore` remains available independently:
 
-## Preferences/NVS raw values
+```cpp
+AtomicFileStore atomic(storage);
+atomic.Replace("/config.bin", bytes, size);
+```
+
+# Backend examples
+
+LittleFS:
+
+```cpp
+LittleFSStorage storage(false); // never format automatically
+storage.Initialize();
+```
+
+Preferences/NVS:
 
 ```cpp
 PreferencesStorage settings("camera");
 settings.Initialize();
-
-uint32_t exposureCounter = 42;
-settings.Write(
-    "counter",
-    reinterpret_cast<const uint8_t*>(&exposureCounter),
-    sizeof(exposureCounter)
-);
 ```
 
-Use Preferences when data naturally looks like `key -> small value`; do not invent pseudo-filesystem paths inside NVS.
-
-## External SD over SPI
+External SD/SPI:
 
 ```cpp
-SDStorage sd(5); // chip-select pin
-if (sd.Initialize() == StorageStatus::Success) {
-    // Same IFileStorage API as LittleFS.
-}
+SDStorage sd(5);
+sd.Initialize();
 ```
 
-## Native SD/MMC
+SD/MMC:
 
 ```cpp
-SDMMCStorage sdmmc(true); // one-bit bus mode
+SDMMCStorage sdmmc(true);
 sdmmc.Initialize();
 ```
 
@@ -318,102 +326,84 @@ sdmmc.Initialize();
 
 ```cpp
 if (HasCapability(storage.GetCapabilities(), StorageCapability::Removable)) {
-    // Media disappearance is an expected runtime condition.
-}
-
-if (HasCapability(storage.GetCapabilities(), StorageCapability::Rename)) {
-    AtomicFileStore atomic(storage);
+    // Treat media disappearance as an expected runtime condition.
 }
 ```
 
-Capabilities describe hierarchical storage, key/value storage, directories, rename, append, removable media, capacity reporting and atomic-replacement suitability.
+Capabilities expose hierarchical/key-value semantics, directories, rename, append, removable media, capacity reporting and atomic-replacement suitability.
 
 # Format-on-failure policy
 
-LittleFS, SPIFFS and FFat constructors accept `formatOnFailure`:
+LittleFS, SPIFFS and FFat accept `formatOnFailure`. The default is deliberately `false` so a mount failure does not silently destroy persisted data.
 
 ```cpp
 LittleFSStorage conservative(false);
 LittleFSStorage recoverByFormatting(true);
 ```
 
-The default is deliberately **false**. Mount failure should not silently destroy persistent data.
-
-# Testing application logic on a desktop
+# Host testing
 
 ```cpp
-MemoryFileStorage storage;
-storage.Initialize();
+MemoryFileStorage files;
+files.Initialize();
 
-DeviceConfiguration configuration;
-SaveSerializable(storage, "/config.espb", configuration);
+MemoryKeyValueStorage values;
+values.Initialize();
 ```
 
-The same typed calls can be exercised against `MemoryKeyValueStorage`, allowing domain persistence logic and schema evolution to be tested without hardware.
+Both typed and protected typed APIs can be exercised against these implementations, allowing application persistence/security behavior to be tested without hardware.
 
 # Architecture
 
 ```text
-Serializable object
-        |
-        | optional typed integration
-        v
-ESPB BinaryArchive
-        |
-        +--------------------------+
-        |                          |
- IFileStorage               IKeyValueStorage
-        |                          |
-LittleFS/SPIFFS/          Preferences/NVS
-FFat/SD/SD_MMC            MemoryKeyValue
-MemoryFile
+Application object
+       |
+       v
+Serializable
+       |
+       +---- ordinary ESPB --------------------+
+       |                                       |
+       +---- optional Security protection -----+
+                                               |
+                                    Persistence storage
+                                      /            \
+                               IFileStorage   IKeyValueStorage
 ```
 
-Dependency direction remains deliberate:
+Dependency direction:
 
 ```text
 Persistence core
-    -> no required ESPressio dependencies
+    -> none
 
 Persistence Serializable integration
-    - - -> ESPressio Serializable >= 0.10.3 < 1.0.0
+    - - -> Serializable >= 0.11.0 < 1.0.0
+
+Persistence protected Serializable integration
+    - - -> Serializable >= 0.11.0 < 1.0.0
+            - - -> Security >= 0.4.0 < 1.0.0
 ```
 
-Serializable remains lower-order and knows nothing about Persistence or storage media.
+Persistence itself never depends directly on a cipher, key provider or concrete Security implementation.
 
 See [ESPRESSIO_DEPENDENCY_CHART.md](ESPRESSIO_DEPENDENCY_CHART.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 # Reliability principles
 
-1. Mount/initialization failure is visible to callers.
+1. Initialization failure is visible.
 2. Automatic destructive formatting is opt-in.
-3. Raw read operations are bounded by caller-provided buffers.
-4. Typed reads are bounded by explicit payload/decode limits.
-5. Partial writes are never reported as success.
+3. Raw reads are caller-bounded.
+4. Typed archive decoding is bounded.
+5. Partial writes are never success.
 6. Filesystem and key/value semantics remain distinct.
-7. Application code can be tested against non-hardware backends.
-8. Atomic file replacement is explicit and capability-aware.
-9. Persisted Serializable data retains schema-evolution support.
-10. Optional integrations do not force dependencies onto core-only consumers.
+7. Atomic file replacement is explicit/capability-aware.
+8. Serializable persistence retains schema-evolution support.
+9. Protected persistence authenticates before deserialization.
+10. Optional integrations do not force dependencies on core-only consumers.
 
-# Tests
+# Testing
 
-Host tests cover lifecycle, validation, capabilities, bounded reads, replace/append behaviour, stat/rename/remove, directory/listing behaviour, atomic replacement, key/value sizing and insufficient-buffer behaviour.
-
-The optional Serializable suite additionally verifies:
-
-- file-backed typed round-trip;
-- key/value typed round-trip;
-- atomic file cleanup;
-- non-rename fallback;
-- missing persisted values;
-- malformed payload detection;
-- configured payload limits; and
-- initialization/argument failures.
-
-CI also compiles the ESP32 surface with ESPressio Serializable 0.10.3 and validates typed calls against LittleFS and Preferences/NVS.
-
-See `examples/SerializablePersistence/` for the complete ESP32 example.
+Coverage includes raw backend conformance, atomic replacement and rollback, typed file/key-value round trips, malformed data, resource limits, protected file/key-value round trips, authenticated-context rejection, atomic cleanup and unprotected compatibility. CI additionally compiles the protected ESP32 LittleFS/Preferences surface against the intended Serializable 0.11.0 and Security 0.4.0 release generation.
 
 # License
 
