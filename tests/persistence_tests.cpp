@@ -65,14 +65,27 @@ static void TestDirectoriesAndListing() {
     MemoryFileStorage storage;
     assert(storage.Initialize() == StorageStatus::Success);
     assert(storage.CreateDirectory("/config") == StorageStatus::Success);
+    assert(storage.CreateDirectory("/config/nested") == StorageStatus::Success);
     const uint8_t value = 9;
     assert(storage.Write("/config/a.bin", &value, 1) == StorageStatus::Success);
-    ListState all{};
-    assert(storage.List("/", CountEntries, &all) == StorageStatus::Success);
-    assert(all.count >= 2);
+    assert(storage.Write("/config/nested/b.bin", &value, 1) == StorageStatus::Success);
+
+    ListState root{};
+    assert(storage.List("/", CountEntries, &root) == StorageStatus::Success);
+    assert(root.count == 1); // /config only; listing is one level.
+
+    ListState config{};
+    assert(storage.List("/config", CountEntries, &config) == StorageStatus::Success);
+    assert(config.count == 2); // nested directory + a.bin
+
     ListState early{0, 1};
-    assert(storage.List("/", CountEntries, &early) == StorageStatus::Success);
+    assert(storage.List("/config", CountEntries, &early) == StorageStatus::Success);
     assert(early.count == 1);
+
+    assert(storage.RemoveDirectory("/config") == StorageStatus::Busy);
+    assert(storage.Remove("/config/nested/b.bin") == StorageStatus::Success);
+    assert(storage.RemoveDirectory("/config/nested") == StorageStatus::Success);
+    assert(storage.Remove("/config/a.bin") == StorageStatus::Success);
     assert(storage.RemoveDirectory("/config") == StorageStatus::Success);
 }
 

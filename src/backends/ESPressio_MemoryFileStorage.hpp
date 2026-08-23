@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ESPressio::Persistence {
@@ -77,7 +78,7 @@ public:
         const std::size_t available = it->second.size() - static_cast<std::size_t>(offset);
         bytesRead = std::min(capacity, available);
         if (bytesRead != 0) {
-            std::memcpy(buffer, it->second.data() + offset, bytesRead);
+            std::memcpy(buffer, it->second.data() + static_cast<std::size_t>(offset), bytesRead);
         }
         return StorageStatus::Success;
     }
@@ -109,7 +110,7 @@ public:
         if (!Valid(from) || !Valid(to)) return StorageStatus::InvalidArgument;
         const auto it = _files.find(from);
         if (it == _files.end()) return StorageStatus::NotFound;
-        if (_files.count(to) != 0) return StorageStatus::AlreadyExists;
+        if (_files.count(to) != 0 || _directories.count(to) != 0) return StorageStatus::AlreadyExists;
         _files.emplace(to, std::move(it->second));
         _files.erase(it);
         return StorageStatus::Success;
@@ -118,7 +119,7 @@ public:
     StorageStatus CreateDirectory(const char* path) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path)) return StorageStatus::InvalidArgument;
-        if (_directories.count(path) != 0) return StorageStatus::AlreadyExists;
+        if (_directories.count(path) != 0 || _files.count(path) != 0) return StorageStatus::AlreadyExists;
         _directories.insert(path);
         return StorageStatus::Success;
     }
@@ -126,7 +127,17 @@ public:
     StorageStatus RemoveDirectory(const char* path) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path) || std::strcmp(path, "/") == 0) return StorageStatus::InvalidArgument;
-        return _directories.erase(path) != 0 ? StorageStatus::Success : StorageStatus::NotFound;
+        if (_directories.count(path) == 0) return StorageStatus::NotFound;
+        const std::string prefix = std::string(path) + "/";
+        for (const auto& directory : _directories) {
+            if (directory != path && directory.rfind(prefix, 0) == 0) return StorageStatus::Busy;
+        }
+        for (const auto& [name, ignored] : _files) {
+            (void)ignored;
+            if (name.rfind(prefix, 0) == 0) return StorageStatus::Busy;
+        }
+        _directories.erase(path);
+        return StorageStatus::Success;
     }
 
     StorageStatus List(
@@ -136,16 +147,17 @@ public:
     ) const override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path) || callback == nullptr) return StorageStatus::InvalidArgument;
+        if (_directories.count(path) == 0) return StorageStatus::NotFound;
         const std::string prefix = std::strcmp(path, "/") == 0 ? "/" : std::string(path) + "/";
         for (const auto& item : _directories) {
-            if (item == path || item.rfind(prefix, 0) != 0) continue;
+            if (item == path || !IsDirectChild(prefix, item)) continue;
             StorageEntry entry{};
             CopyPath(entry.path, item.c_str());
             entry.isDirectory = true;
             if (!callback(entry, context)) return StorageStatus::Success;
         }
         for (const auto& [name, value] : _files) {
-            if (name.rfind(prefix, 0) != 0) continue;
+            if (!IsDirectChild(prefix, name)) continue;
             StorageEntry entry{};
             CopyPath(entry.path, name.c_str());
             entry.size = value.size();
@@ -156,6 +168,11 @@ public:
 
 private:
     static bool Valid(const char* value) { return value != nullptr && *value != '\0'; }
+    static bool IsDirectChild(const std::string& prefix, const std::string& value) {
+        if (value.rfind(prefix, 0) != 0) return false;
+        const std::string remainder = value.substr(prefix.size());
+        return !remainder.empty() && remainder.find('/') == std::string::npos;
+    }
     static void CopyPath(char* destination, const char* source) {
         std::strncpy(destination, source, StorageEntry::MaximumPathLength - 1);
         destination[StorageEntry::MaximumPathLength - 1] = '\0';

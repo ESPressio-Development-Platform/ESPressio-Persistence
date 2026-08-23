@@ -10,17 +10,17 @@
 | `SDStorage` | external SD over SPI | removable/high-capacity data | Works with generic SPI SD modules; configure CS pin. |
 | `SDMMCStorage` | external/integrated SD over SDMMC | higher-throughput removable data | Requires suitable SDMMC-capable pins/hardware. |
 
-All file backends expose bounded reads, replace/append writes, metadata, directory operations, rename and listing through `IFileStorage`.
+All file backends expose bounded reads, replace/append writes, metadata, one-level directory listing, directory operations and rename through `IFileStorage`.
 
 ## Key/value backend
 
 `PreferencesStorage` wraps ESP32 Preferences/NVS and implements `IKeyValueStorage`. Use it for small configuration values, flags, identifiers and compact binary records where a hierarchical filesystem would be unnecessary.
 
-NVS key and namespace limits are imposed by ESP-IDF/Arduino Preferences. Keep keys deliberately short and stable.
+ESP32 NVS limits namespace names and keys to 15 characters. `PreferencesStorage` validates those limits and reports `InvalidArgument` before invoking the backend.
 
 ## Host/test backends
 
-`MemoryFileStorage` and `MemoryKeyValueStorage` implement the same public contracts without Arduino dependencies. They are useful for host tests, simulation, dependency injection and application-level persistence tests.
+`MemoryFileStorage` and `MemoryKeyValueStorage` implement the same public contracts without Arduino dependencies. They are useful for host tests, simulation, dependency injection and application-level persistence tests. `MemoryFileStorage` deliberately mirrors filesystem behavior for one-level directory listing and refuses to remove non-empty directories.
 
 ## Atomicity and power loss
 
