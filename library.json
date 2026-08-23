@@ -1,8 +1,8 @@
 {
     "name": "ESPressio-Persistence",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Capability-aware persistence abstractions and storage backends for ESP32 applications",
-    "keywords": "espressio,persistence,storage,littlefs,spiffs,ffat,nvs,preferences,sd,sdmmc",
+    "keywords": "espressio,persistence,storage,littlefs,spiffs,ffat,nvs,preferences,sd,sdmmc,serializable",
     "homepage": "https://espressio.org",
     "authors": {
         "name": "Simon J. Stuart",

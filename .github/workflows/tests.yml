@@ -18,12 +18,38 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  serializable-host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: project/ESPressio-Persistence
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Serializable
+          ref: 0.10.3
+          path: project/ESPressio-Serializable
+      - name: Compile Serializable persistence tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
+            -I project/ESPressio-Persistence/src \
+            -I project/ESPressio-Serializable/src \
+            project/ESPressio-Persistence/tests/serializable_persistence_tests.cpp \
+            -o project/serializable_persistence_tests
+      - name: Run Serializable persistence tests
+        run: project/serializable_persistence_tests
+
   esp32-compile:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           path: project/ESPressio-Persistence
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Serializable
+          ref: 0.10.3
+          path: project/ESPressio-Serializable
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -40,27 +66,49 @@ jobs:
           framework = arduino
           build_flags = -std=gnu++17
           build_unflags = -std=gnu++11
-          lib_deps = ../ESPressio-Persistence
+          lib_deps =
+              ../ESPressio-Persistence
+              ../ESPressio-Serializable
           EOF
           cat > project/compile/src/main.cpp <<'EOF'
           #include <Arduino.h>
           #include <ESPressio_ESP32Persistence.hpp>
+          #include <ESPressio_Persistence_Serializable.hpp>
+
+          using namespace ESPressio;
           using namespace ESPressio::Persistence;
+
+          class Configuration final
+              : public Serializable::Serializable<Configuration> {
+              ESPRESSIO_SERIALIZABLE_TYPE(Configuration)
+              ESPRESSIO_SERIALIZABLE_SCHEMA_VERSION(1)
+          private:
+              uint32_t _counter = 0;
+          public:
+              ESPRESSIO_SERIALIZABLE_PROPERTIES(
+                  ESPRESSIO_PROPERTY("counter", _counter)
+              )
+          };
+
           LittleFSStorage littlefs(false);
           SPIFFSStorage spiffs(false);
           FFatStorage ffat(false);
           PreferencesStorage preferences("test");
           SDStorage sd(5);
           SDMMCStorage sdmmc(true);
+
           void setup() {
-              (void)littlefs.GetCapabilities();
+              Configuration value;
+              (void)SaveSerializable(littlefs, "/value.bin", value);
+              (void)LoadSerializable(littlefs, "/value.bin", value);
+              (void)SaveSerializable(preferences, "value", value);
+              (void)LoadSerializable(preferences, "value", value);
               (void)spiffs.GetCapabilities();
               (void)ffat.GetCapabilities();
-              (void)preferences.GetCapabilities();
               (void)sd.GetCapabilities();
               (void)sdmmc.GetCapabilities();
           }
           void loop() {}
           EOF
-      - name: Compile ESP32 backend surface
+      - name: Compile ESP32 backend and Serializable surface
         run: pio run -d project/compile
