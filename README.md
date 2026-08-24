@@ -4,9 +4,9 @@ A capability-aware persistence foundation for the ESPressio Development Platform
 
 ESPressio Persistence gives application code a stable way to store and retrieve data without coupling domain logic to LittleFS, SPIFFS, FAT, SD cards or ESP32 Preferences/NVS.
 
-## Current version — 0.3.0
+## Current version — 0.3.2
 
-0.3.0 adds **optional authenticated protection for Serializable persistence**. A complete Serializable object can now be serialized, authenticated/encrypted, persisted to any supported file or key/value backend, and restored directly into its concrete type.
+0.3.2 is a dependency-maintenance release validating typed persistence against ESPressio Serializable 0.11.3 and protected typed persistence against ESPressio Security 0.4.2. The public storage and persistence APIs introduced through 0.3.0 are unchanged.
 
 Core Persistence remains dependency-free.
 
@@ -48,24 +48,24 @@ Core:
 
 ```ini
 lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.3.0
+    espressio-development-platform/ESPressio-Persistence@^0.3.2
 ```
 
 Typed Serializable persistence:
 
 ```ini
 lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.3.0
-    espressio-development-platform/ESPressio-Serializable@^0.11.0
+    espressio-development-platform/ESPressio-Persistence@^0.3.2
+    espressio-development-platform/ESPressio-Serializable@^0.11.3
 ```
 
 Protected typed persistence additionally requires Security:
 
 ```ini
 lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.3.0
-    espressio-development-platform/ESPressio-Serializable@^0.11.0
-    espressio-development-platform/ESPressio-Security@^0.4.0
+    espressio-development-platform/ESPressio-Persistence@^0.3.2
+    espressio-development-platform/ESPressio-Serializable@^0.11.3
+    espressio-development-platform/ESPressio-Security@^0.4.2
     espressio-development-platform/ESPressio-Observable@^3.0.2
 ```
 
@@ -193,7 +193,7 @@ The application does not know whether the provider is LittleFS, Preferences, SD,
 
 # Protection is optional
 
-Existing 0.2.x calls remain unchanged:
+Existing unprotected typed calls remain unchanged:
 
 ```cpp
 SaveSerializable(storage, "/config.espb", config);
@@ -377,11 +377,11 @@ Persistence core
     -> none
 
 Persistence Serializable integration
-    - - -> Serializable >= 0.11.0 < 1.0.0
+    - - -> Serializable >= 0.11.3 < 1.0.0
 
 Persistence protected Serializable integration
-    - - -> Serializable >= 0.11.0 < 1.0.0
-            - - -> Security >= 0.4.0 < 1.0.0
+    - - -> Serializable >= 0.11.3 < 1.0.0
+            - - -> Security >= 0.4.2 < 1.0.0
 ```
 
 Persistence itself never depends directly on a cipher, key provider or concrete Security implementation.
@@ -403,7 +403,7 @@ See [ESPRESSIO_DEPENDENCY_CHART.md](ESPRESSIO_DEPENDENCY_CHART.md) and [docs/ARC
 
 # Testing
 
-Coverage includes raw backend conformance, atomic replacement and rollback, typed file/key-value round trips, malformed data, resource limits, protected file/key-value round trips, authenticated-context rejection, atomic cleanup and unprotected compatibility. CI additionally compiles the protected ESP32 LittleFS/Preferences surface against the intended Serializable 0.11.0 and Security 0.4.0 release generation.
+Coverage includes raw backend conformance, atomic replacement and rollback, typed file/key-value round trips, malformed data, resource limits, protected file/key-value round trips, authenticated-context rejection, atomic cleanup and unprotected compatibility. CI additionally compiles the protected ESP32 LittleFS/Preferences surface against released Serializable 0.11.3 and Security 0.4.2, with Observable 3.0.2.
 
 # License
 

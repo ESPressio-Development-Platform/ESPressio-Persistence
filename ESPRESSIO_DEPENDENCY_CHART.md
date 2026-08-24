@@ -1,17 +1,17 @@
-# ESPressio Persistence dependency position — 0.3.0
+# ESPressio Persistence dependency position — 0.3.2
 
 ESPressio Persistence keeps its **core storage layer dependency-free** while exposing opt-in typed and protected-typed integrations.
 
 ```text
-Persistence core 0.3.0
+Persistence core 0.3.2
     -> none
 
 Persistence Serializable integration
-    - - -> Serializable >= 0.11.0 < 1.0.0
+    - - -> Serializable >= 0.11.3 < 1.0.0
 
 Persistence protected Serializable integration
-    - - -> Serializable >= 0.11.0 < 1.0.0
-            - - -> Security >= 0.4.0 < 1.0.0
+    - - -> Serializable >= 0.11.3 < 1.0.0
+            - - -> Security >= 0.4.2 < 1.0.0
 ```
 
 Headers make the distinction explicit:
@@ -36,4 +36,4 @@ Persistence
 
 Neither Security nor Serializable knows about storage media or depends back on Persistence.
 
-This positioning is intended to support downstream consumers such as ESPressio WiFi and ESPressio Web without coupling those libraries to LittleFS/NVS/SD implementations or to cryptographic primitives.
+This positioning supports downstream consumers such as ESPressio WiFi and ESPressio Web without coupling those libraries to LittleFS/NVS/SD implementations or to cryptographic primitives.
