@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 The structure follows Keep a Changelog and Semantic Versioning principles.
 
+## [0.3.2] - 2026-08-24
+
+### Changed
+
+- Updated typed Serializable persistence validation to ESPressio Serializable `0.11.3`.
+- Updated protected Serializable persistence validation to ESPressio Security `0.4.2` through Serializable's optional Security integration.
+- Preserved ESPressio Observable `3.0.2` for Security integration validation.
+- Updated package and Arduino metadata for Persistence `0.3.2`.
+- Reconciled stale README and dependency documentation that still described the 0.3.0 generation while package metadata had already advanced to 0.3.1.
+- Updated host and ESP32 integration CI to released dependency tags only.
+
+### Architecture
+
+- Persistence core remains dependency-free.
+- Serializable integration remains opt-in.
+- Protected Serializable persistence continues to consume Security indirectly through Serializable's protection API; Persistence does not acquire a direct Security dependency.
+
+### Compatibility
+
+- No Persistence storage API, backend contract, typed-persistence API, protected-persistence API, atomic replacement behaviour, schema behaviour, or persisted representation changes.
+- Existing ESPB and ESDP persisted data remain compatible.
+
+### Tracking
+
+- Closes #7.
+
 ## [0.3.0] - 2026-08-23
 
 ### Added
