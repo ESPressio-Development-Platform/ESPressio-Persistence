@@ -5,10 +5,15 @@
 
 namespace ESPressio::Persistence {
 
+/// <summary>Provides failure-resilient file replacement using temporary and backup renames on an <c>IFileStorage</c> backend.</summary>
+/// <remarks>The underlying backend must be ready and support the <c>Rename</c> capability.</remarks>
 class AtomicFileStore final {
 public:
+    /// <summary>Creates an atomic replacement helper over the supplied file-storage backend.</summary>
     explicit AtomicFileStore(IFileStorage& storage) : _storage(storage) {}
 
+    /// <summary>Replaces a target file through temporary-file write, backup rename, and final rename operations.</summary>
+    /// <returns>The first storage failure encountered, or <c>StorageStatus::Success</c> when replacement completes.</returns>
     StorageStatus Replace(
         const char* path,
         const uint8_t* data,
