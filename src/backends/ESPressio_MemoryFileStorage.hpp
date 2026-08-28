@@ -11,8 +11,10 @@
 
 namespace ESPressio::Persistence {
 
+/// <summary>In-memory hierarchical <c>IFileStorage</c> implementation intended for volatile storage, host use, and tests.</summary>
 class MemoryFileStorage final : public IFileStorage {
 public:
+    /// <inheritdoc/>
     StorageStatus Initialize() override {
         if (_ready) return StorageStatus::AlreadyInitialized;
         _ready = true;
@@ -20,10 +22,14 @@ public:
         return StorageStatus::Success;
     }
 
+    /// <inheritdoc/>
     void Shutdown() override { _ready = false; }
+    /// <inheritdoc/>
     bool IsReady() const override { return _ready; }
+    /// <inheritdoc/>
     const char* GetBackendName() const override { return "MemoryFileStorage"; }
 
+    /// <inheritdoc/>
     StorageCapability GetCapabilities() const override {
         return StorageCapability::Hierarchical |
                StorageCapability::Directories |
@@ -32,8 +38,10 @@ public:
                StorageCapability::AtomicReplace;
     }
 
+    /// <inheritdoc/>
     StorageStatistics GetStatistics() const override { return {}; }
 
+    /// <inheritdoc/>
     StorageStatus Exists(const char* path, bool& exists) const override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path)) return StorageStatus::InvalidArgument;
@@ -41,6 +49,7 @@ public:
         return StorageStatus::Success;
     }
 
+    /// <inheritdoc/>
     StorageStatus Stat(const char* path, StorageEntry& entry) const override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path)) return StorageStatus::InvalidArgument;
@@ -60,6 +69,7 @@ public:
         return StorageStatus::NotFound;
     }
 
+    /// <inheritdoc/>
     StorageStatus Read(
         const char* path,
         uint64_t offset,
@@ -83,6 +93,7 @@ public:
         return StorageStatus::Success;
     }
 
+    /// <inheritdoc/>
     StorageStatus Write(
         const char* path,
         const uint8_t* data,
@@ -99,12 +110,14 @@ public:
         return StorageStatus::Success;
     }
 
+    /// <inheritdoc/>
     StorageStatus Remove(const char* path) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path)) return StorageStatus::InvalidArgument;
         return _files.erase(path) != 0 ? StorageStatus::Success : StorageStatus::NotFound;
     }
 
+    /// <inheritdoc/>
     StorageStatus Rename(const char* from, const char* to) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(from) || !Valid(to)) return StorageStatus::InvalidArgument;
@@ -116,6 +129,7 @@ public:
         return StorageStatus::Success;
     }
 
+    /// <inheritdoc/>
     StorageStatus CreateDirectory(const char* path) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path)) return StorageStatus::InvalidArgument;
@@ -124,6 +138,7 @@ public:
         return StorageStatus::Success;
     }
 
+    /// <inheritdoc/>
     StorageStatus RemoveDirectory(const char* path) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(path) || std::strcmp(path, "/") == 0) return StorageStatus::InvalidArgument;
@@ -140,6 +155,7 @@ public:
         return StorageStatus::Success;
     }
 
+    /// <inheritdoc/>
     StorageStatus List(
         const char* path,
         StorageListCallback callback,
