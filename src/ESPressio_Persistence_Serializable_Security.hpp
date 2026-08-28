@@ -3,25 +3,21 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <vector>
 
 #include "ESPressio_Persistence_Serializable.hpp"
 #include <ESPressio_Serializable_Security.hpp>
 
 namespace ESPressio::Persistence {
 
-/// <summary>Combines storage status, protected payload size, and the underlying protected-serialization result.</summary>
 struct ProtectedSerializablePersistenceResult {
     StorageStatus Storage = StorageStatus::Success;
     std::size_t PayloadBytes = 0;
     Serializable::ProtectedSerializationResult Serialization{};
 
-    /// <summary>Indicates whether both persistence and protected serialization completed successfully.</summary>
     bool Success() const {
         return Storage == StorageStatus::Success && Serialization.Success();
     }
 
-    /// <summary>Converts the result to <c>true</c> when the complete protected persistence operation succeeded.</summary>
     explicit operator bool() const { return Success(); }
 };
 
@@ -37,8 +33,6 @@ inline ProtectedSerializablePersistenceResult MakeProtectedStorageFailure(
 
 } // namespace Detail
 
-/// <summary>Serializes, protects, and persists an object through a file-oriented backend.</summary>
-/// <remarks>Atomic file replacement is preferred when requested and supported by the backend.</remarks>
 template<typename TObject>
 ProtectedSerializablePersistenceResult SaveSerializable(
     IFileStorage& storage,
@@ -55,7 +49,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     }
 
     ProtectedSerializablePersistenceResult result;
-    std::vector<uint8_t> bytes;
+    Serializable::SerializationBuffer<uint8_t> bytes;
     result.Serialization = Serializable::SerializeProtectedBinary(
         object,
         bytes,
@@ -81,7 +75,6 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     return result;
 }
 
-/// <summary>Loads protected bytes from a file-oriented backend, authenticates/decrypts them, and restores an object.</summary>
 template<typename TObject>
 ProtectedSerializablePersistenceResult LoadSerializable(
     IFileStorage& storage,
@@ -106,7 +99,7 @@ ProtectedSerializablePersistenceResult LoadSerializable(
         return result;
     }
 
-    std::vector<uint8_t> bytes(static_cast<std::size_t>(entry.size));
+    Serializable::SerializationBuffer<uint8_t> bytes(static_cast<std::size_t>(entry.size));
     std::size_t bytesRead = 0;
     status = storage.Read(path, 0, bytes.data(), bytes.size(), bytesRead);
     if (status != StorageStatus::Success) return Detail::MakeProtectedStorageFailure(status);
@@ -123,7 +116,6 @@ ProtectedSerializablePersistenceResult LoadSerializable(
     return result;
 }
 
-/// <summary>Serializes, protects, and persists an object through a key/value backend.</summary>
 template<typename TObject>
 ProtectedSerializablePersistenceResult SaveSerializable(
     IKeyValueStorage& storage,
@@ -139,7 +131,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     }
 
     ProtectedSerializablePersistenceResult result;
-    std::vector<uint8_t> bytes;
+    Serializable::SerializationBuffer<uint8_t> bytes;
     result.Serialization = Serializable::SerializeProtectedBinary(
         object,
         bytes,
@@ -152,7 +144,6 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     return result;
 }
 
-/// <summary>Loads protected bytes from a key/value backend, authenticates/decrypts them, and restores an object.</summary>
 template<typename TObject>
 ProtectedSerializablePersistenceResult LoadSerializable(
     IKeyValueStorage& storage,
@@ -171,7 +162,7 @@ ProtectedSerializablePersistenceResult LoadSerializable(
     StorageStatus status = storage.GetSize(key, size);
     if (status != StorageStatus::Success) return Detail::MakeProtectedStorageFailure(status);
 
-    std::vector<uint8_t> bytes(size);
+    Serializable::SerializationBuffer<uint8_t> bytes(size);
     std::size_t bytesRead = 0;
     status = storage.Read(key, bytes.data(), bytes.size(), bytesRead);
     if (status != StorageStatus::Success) return Detail::MakeProtectedStorageFailure(status);
