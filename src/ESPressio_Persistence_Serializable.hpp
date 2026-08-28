@@ -12,6 +12,7 @@
 
 namespace ESPressio::Persistence {
 
+/// <summary>Result category for persisting or restoring ESPressio Serializable objects.</summary>
 enum class SerializablePersistenceStatus : uint8_t {
     Success = 0,
     InvalidArgument,
@@ -22,6 +23,7 @@ enum class SerializablePersistenceStatus : uint8_t {
     DeserializationFailed
 };
 
+/// <summary>Returns a stable diagnostic name for a Serializable persistence status.</summary>
 inline const char* SerializablePersistenceStatusName(
     SerializablePersistenceStatus status
 ) {
@@ -37,6 +39,7 @@ inline const char* SerializablePersistenceStatusName(
     }
 }
 
+/// <summary>Configures payload limits, file replacement behavior, binary decode limits, and deserialization validation.</summary>
 struct SerializablePersistenceOptions {
     // Protect embedded consumers from unexpectedly large persisted objects.
     // Applications can raise this deliberately when their storage/use case requires it.
@@ -50,16 +53,19 @@ struct SerializablePersistenceOptions {
     Serializable::DeserializationOptions Deserialization{};
 };
 
+/// <summary>Combines persistence status, backend status, payload size, and detailed deserialization issues.</summary>
 struct SerializablePersistenceResult {
     SerializablePersistenceStatus Status = SerializablePersistenceStatus::Success;
     StorageStatus Storage = StorageStatus::Success;
     std::size_t PayloadBytes = 0;
     Serializable::DeserializationResult Deserialization{};
 
+    /// <summary>Indicates whether the complete persistence operation succeeded.</summary>
     bool Success() const {
         return Status == SerializablePersistenceStatus::Success;
     }
 
+    /// <summary>Converts the result to <c>true</c> on success.</summary>
     explicit operator bool() const { return Success(); }
 };
 
@@ -146,7 +152,8 @@ inline bool ValidLocator(const char* locator) {
 
 } // namespace Detail
 
-// Persist a Serializable object into any file-oriented Persistence backend.
+/// <summary>Serializes an object to binary and persists it through a file-oriented storage backend.</summary>
+/// <remarks>Atomic replacement is used when requested and supported by the backend.</remarks>
 template<typename TObject>
 SerializablePersistenceResult SaveSerializable(
     IFileStorage& storage,
@@ -186,7 +193,7 @@ SerializablePersistenceResult SaveSerializable(
     return result;
 }
 
-// Restore a Serializable object from any file-oriented Persistence backend.
+/// <summary>Restores an ESPressio Serializable object from a file-oriented storage backend.</summary>
 template<typename TObject>
 SerializablePersistenceResult LoadSerializable(
     IFileStorage& storage,
@@ -228,7 +235,7 @@ SerializablePersistenceResult LoadSerializable(
     );
 }
 
-// Persist a Serializable object into any key/value Persistence backend.
+/// <summary>Serializes an object to binary and persists it through a key/value storage backend.</summary>
 template<typename TObject>
 SerializablePersistenceResult SaveSerializable(
     IKeyValueStorage& storage,
@@ -253,7 +260,7 @@ SerializablePersistenceResult SaveSerializable(
     return result;
 }
 
-// Restore a Serializable object from any key/value Persistence backend.
+/// <summary>Restores an ESPressio Serializable object from a key/value storage backend.</summary>
 template<typename TObject>
 SerializablePersistenceResult LoadSerializable(
     IKeyValueStorage& storage,
