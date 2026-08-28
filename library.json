@@ -9,5 +9,19 @@
     "license": "Apache-2.0",
     "frameworks": "*",
     "platforms": "*",
-    "headers": ["ESPressio_Persistence.hpp"]
+    "headers": ["ESPressio_Persistence.hpp"],
+    "dependencies": [
+        {
+            "name": "ESPressio-Serializable",
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Serializable.git#optimisation/25-psram-buffers_optimisation03"
+        },
+        {
+            "name": "ESPressio-Security",
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Security.git#optimisation/23-memory-policy-transient-buffers_optimisation03"
+        },
+        {
+            "name": "ESPressio-System",
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-System.git#feature/1-system-memory-policy"
+        }
+    ]
 }
