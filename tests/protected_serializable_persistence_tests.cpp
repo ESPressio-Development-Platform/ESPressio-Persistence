@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 using namespace ESPressio;
 using namespace ESPressio::Persistence;
@@ -32,19 +31,50 @@ public:
 
 class PurposeProtector final : public Security::IDataProtector {
 public:
-    Security::SecurityResult Protect(const uint8_t* data,std::size_t size,std::vector<uint8_t>& out,const Security::DataProtectionContext& context={}) override {
-        if (data == nullptr && size != 0) return Security::SecurityResult::Fail(Security::SecurityError::InvalidArgument,"bad");
-        out.clear(); out.push_back(Context(context));
-        for(std::size_t i=0;i<size;++i) out.push_back(static_cast<uint8_t>(data[i]^0x5Au));
+    Security::SecurityResult Protect(
+        const uint8_t* data,
+        std::size_t size,
+        Security::SecurityBuffer& out,
+        const Security::DataProtectionContext& context = {}
+    ) override {
+        if (data == nullptr && size != 0) {
+            return Security::SecurityResult::Fail(Security::SecurityError::InvalidArgument, "bad");
+        }
+        out.clear();
+        out.push_back(Context(context));
+        for (std::size_t i = 0; i < size; ++i) {
+            out.push_back(static_cast<uint8_t>(data[i] ^ 0x5Au));
+        }
         return Security::SecurityResult::Ok(true);
     }
-    Security::SecurityResult Unprotect(const uint8_t* data,std::size_t size,std::vector<uint8_t>& out,const Security::DataProtectionContext& context={}) override {
-        out.clear(); if(data==nullptr||size==0||data[0]!=Context(context)) return Security::SecurityResult::Fail(Security::SecurityError::AuthenticationFailed,"context/auth failure");
-        for(std::size_t i=1;i<size;++i) out.push_back(static_cast<uint8_t>(data[i]^0x5Au));
+
+    Security::SecurityResult Unprotect(
+        const uint8_t* data,
+        std::size_t size,
+        Security::SecurityBuffer& out,
+        const Security::DataProtectionContext& context = {}
+    ) override {
+        out.clear();
+        if (data == nullptr || size == 0 || data[0] != Context(context)) {
+            return Security::SecurityResult::Fail(
+                Security::SecurityError::AuthenticationFailed,
+                "context/auth failure"
+            );
+        }
+        for (std::size_t i = 1; i < size; ++i) {
+            out.push_back(static_cast<uint8_t>(data[i] ^ 0x5Au));
+        }
         return Security::SecurityResult::Ok(true);
     }
+
 private:
-    static uint8_t Context(const Security::DataProtectionContext& c){uint8_t v=0;for(std::size_t i=0;i<c.Size;++i)v=static_cast<uint8_t>((v*31u)^c.Data[i]);return v;}
+    static uint8_t Context(const Security::DataProtectionContext& c) {
+        uint8_t v = 0;
+        for (std::size_t i = 0; i < c.Size; ++i) {
+            v = static_cast<uint8_t>((v * 31u) ^ c.Data[i]);
+        }
+        return v;
+    }
 };
 
 static void AssertValue(const ProtectedConfiguration& value) {
@@ -83,7 +113,6 @@ int main() {
     assert(rejectedLoad.Serialization.Status == Serializable::ProtectedSerializationStatus::UnprotectionFailed);
     assert(rejectedLoad.Serialization.SecurityResult.Error == Security::SecurityError::AuthenticationFailed);
 
-    // Existing unprotected 0.2.x API remains independently usable.
     assert(SaveSerializable(files, "/plain.bin", source).Success());
     ProtectedConfiguration plain;
     assert(LoadSerializable(files, "/plain.bin", plain).Success());
