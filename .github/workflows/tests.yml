@@ -25,12 +25,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Serializable
-          ref: optimisation/25-psram-buffers_optimisation03
+          ref: optimisation/25-psram-buffers
           path: project/ESPressio-Serializable
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Security
-          ref: optimisation/23-memory-policy-transient-buffers_optimisation03
+          ref: optimisation/23-memory-policy-transient-buffers
           path: project/ESPressio-Security
       - uses: actions/checkout@v4
         with:
@@ -72,12 +72,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Serializable
-          ref: optimisation/25-psram-buffers_optimisation03
+          ref: optimisation/25-psram-buffers
           path: project/ESPressio-Serializable
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Security
-          ref: optimisation/23-memory-policy-transient-buffers_optimisation03
+          ref: optimisation/23-memory-policy-transient-buffers
           path: project/ESPressio-Security
       - uses: actions/checkout@v4
         with:
@@ -136,7 +136,7 @@ jobs:
           Security::AES256GCMCipher cipher;
           Security::AeadCipherRegistry ciphers;
           Security::StaticKeyProvider keys;
-          Security::ESP32RandomSource randomSource;
+          Security::RandomSource randomSource;
 
           void setup() {
               uint8_t key[32]{};
