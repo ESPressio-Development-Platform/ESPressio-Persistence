@@ -10,15 +10,18 @@
 
 namespace ESPressio::Persistence {
 
+/// <summary>Combines storage status, protected payload size, and the underlying protected-serialization result.</summary>
 struct ProtectedSerializablePersistenceResult {
     StorageStatus Storage = StorageStatus::Success;
     std::size_t PayloadBytes = 0;
     Serializable::ProtectedSerializationResult Serialization{};
 
+    /// <summary>Indicates whether both persistence and protected serialization completed successfully.</summary>
     bool Success() const {
         return Storage == StorageStatus::Success && Serialization.Success();
     }
 
+    /// <summary>Converts the result to <c>true</c> when the complete protected persistence operation succeeded.</summary>
     explicit operator bool() const { return Success(); }
 };
 
@@ -34,7 +37,8 @@ inline ProtectedSerializablePersistenceResult MakeProtectedStorageFailure(
 
 } // namespace Detail
 
-// Protected Serializable persistence for any file-oriented backend.
+/// <summary>Serializes, protects, and persists an object through a file-oriented backend.</summary>
+/// <remarks>Atomic file replacement is preferred when requested and supported by the backend.</remarks>
 template<typename TObject>
 ProtectedSerializablePersistenceResult SaveSerializable(
     IFileStorage& storage,
@@ -77,6 +81,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     return result;
 }
 
+/// <summary>Loads protected bytes from a file-oriented backend, authenticates/decrypts them, and restores an object.</summary>
 template<typename TObject>
 ProtectedSerializablePersistenceResult LoadSerializable(
     IFileStorage& storage,
@@ -118,7 +123,7 @@ ProtectedSerializablePersistenceResult LoadSerializable(
     return result;
 }
 
-// Protected Serializable persistence for any key/value backend.
+/// <summary>Serializes, protects, and persists an object through a key/value backend.</summary>
 template<typename TObject>
 ProtectedSerializablePersistenceResult SaveSerializable(
     IKeyValueStorage& storage,
@@ -147,6 +152,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     return result;
 }
 
+/// <summary>Loads protected bytes from a key/value backend, authenticates/decrypts them, and restores an object.</summary>
 template<typename TObject>
 ProtectedSerializablePersistenceResult LoadSerializable(
     IKeyValueStorage& storage,
