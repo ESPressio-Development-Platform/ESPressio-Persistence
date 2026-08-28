@@ -114,7 +114,7 @@ jobs:
           EOF
           cat > project/compile/src/main.cpp <<'EOF'
           #include <Arduino.h>
-          #include <ESPressio_ESP32Persistence.hpp>
+          #include <ESPressio_Persistence.hpp>
           #include <ESPressio_Persistence_Serializable.hpp>
           #include <ESPressio_Persistence_Serializable_Security.hpp>
           #include <ESPressio_Security.hpp>
@@ -131,8 +131,8 @@ jobs:
               ESPRESSIO_SERIALIZABLE_PROPERTIES(ESPRESSIO_PROPERTY("counter", _counter))
           };
 
-          LittleFSStorage littlefs(false);
-          PreferencesStorage preferences("test");
+          MemoryFileStorage files;
+          MemoryKeyValueStorage values;
           Security::AES256GCMCipher cipher;
           Security::AeadCipherRegistry ciphers;
           Security::StaticKeyProvider keys;
@@ -140,15 +140,17 @@ jobs:
 
           void setup() {
               uint8_t key[32]{};
+              (void)files.Initialize();
+              (void)values.Initialize();
               ciphers.Register(cipher);
               keys.Add(1, Security::AeadAlgorithm::AES256GCM, key, sizeof(key));
               Security::DataProtector protector(ciphers, keys, randomSource);
               Serializable::SerializationProtectionConfig protection(protector, "test.config");
               Configuration value;
-              (void)SaveSerializable(littlefs, "/value.bin", value, protection);
-              (void)LoadSerializable(littlefs, "/value.bin", value, protection);
-              (void)SaveSerializable(preferences, "value", value, protection);
-              (void)LoadSerializable(preferences, "value", value, protection);
+              (void)SaveSerializable(files, "/value.bin", value, protection);
+              (void)LoadSerializable(files, "/value.bin", value, protection);
+              (void)SaveSerializable(values, "value", value, protection);
+              (void)LoadSerializable(values, "value", value, protection);
           }
           void loop() {}
           EOF
