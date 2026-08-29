@@ -1,8 +1,34 @@
 #pragma once
 
 #include <ESPressio_IStorageBackend.hpp>
+#include <ESPressio_PolymorphicMemory.hpp>
 
 namespace ESPressio::Persistence {
+
+/// <summary>Provides sequential access to one already-open file without reopening the underlying backend for every chunk.</summary>
+class IFileReadStream {
+public:
+    virtual ~IFileReadStream() = default;
+
+    /// <summary>Returns the total size of the opened file in bytes.</summary>
+    virtual uint64_t Size() const noexcept = 0;
+
+    /// <summary>Returns the current sequential read position in bytes.</summary>
+    virtual uint64_t Position() const noexcept = 0;
+
+    /// <summary>Reads up to <paramref name="capacity"/> bytes from the current position and advances the stream.</summary>
+    /// <param name="buffer">Destination buffer; may be null only when capacity is zero.</param>
+    /// <param name="capacity">Maximum number of bytes to read.</param>
+    /// <param name="bytesRead">Receives the number of bytes copied into the destination.</param>
+    virtual StorageStatus Read(
+        uint8_t* buffer,
+        std::size_t capacity,
+        std::size_t& bytesRead
+    ) = 0;
+};
+
+/// <summary>Policy-aware owning pointer for an implementation-specific sequential file stream.</summary>
+using FileReadStreamPtr = System::Memory::PolymorphicUniquePtr<IFileReadStream>;
 
 /// <summary>Abstract filesystem-like persistence backend supporting files, directories, metadata, and enumeration.</summary>
 class IFileStorage : public IStorageBackend {
@@ -22,6 +48,20 @@ public:
         std::size_t capacity,
         std::size_t& bytesRead
     ) const = 0;
+
+    /// <summary>Opens a file once for efficient sequential reads when the backend supports <c>StorageCapability::SequentialRead</c>.</summary>
+    /// <param name="path">Backend-native path to the file.</param>
+    /// <param name="stream">Receives ownership of the opened stream on success.</param>
+    /// <returns><c>NotSupported</c> by default; capable backends return the status of opening the file.</returns>
+    virtual StorageStatus OpenRead(
+        const char* path,
+        FileReadStreamPtr& stream
+    ) const {
+        (void)path;
+        stream.reset();
+        return StorageStatus::NotSupported;
+    }
+
     /// <summary>Writes bytes to a file using the requested replacement or append mode.</summary>
     virtual StorageStatus Write(
         const char* path,
