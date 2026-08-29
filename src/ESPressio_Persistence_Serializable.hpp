@@ -4,6 +4,7 @@
 #include <ESPressio_IKeyValueStorage.hpp>
 #include <ESPressio_AtomicFileStore.hpp>
 #include <ESPressio_Serializable_Binary.hpp>
+#include <ESPressio_DirectBinaryArchive.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -77,9 +78,14 @@ SerializablePersistenceResult EncodeSerializable(
 ) {
     SerializablePersistenceResult result;
     try {
-        Serializable::BinaryArchive archive;
-        object.Serialize(archive);
-        bytes = archive.GetData();
+        // DirectBinary emits the same ESPB v2 wire format as BinaryArchive but
+        // writes properties straight into the caller's external-preferred byte
+        // buffer. This avoids constructing an intermediate SerializationNode
+        // tree solely to encode it immediately afterwards.
+        if (!Serializable::SerializeDirectBinary(object, bytes)) {
+            result.Status = SerializablePersistenceStatus::SerializationFailed;
+            return result;
+        }
     } catch (...) {
         result.Status = SerializablePersistenceStatus::SerializationFailed;
         return result;
@@ -107,6 +113,10 @@ SerializablePersistenceResult DecodeSerializable(
         return result;
     }
 
+    // Keep the bounded tree decoder for reads until DirectBinary exposes the
+    // same BinaryArchiveDecodeLimits contract. The direct writer is wire
+    // compatible, so files written above remain readable here without format
+    // or version changes.
     Serializable::BinaryArchive archive;
     if (!archive.Load(data, size, options.DecodeLimits)) {
         result.Status = SerializablePersistenceStatus::MalformedPayload;
