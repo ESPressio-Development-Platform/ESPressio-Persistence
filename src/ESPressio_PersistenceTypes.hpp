@@ -39,7 +39,8 @@ enum class StorageCapability : uint32_t {
     Append            = 1u << 4,
     Removable         = 1u << 5,
     CapacityReporting = 1u << 6,
-    AtomicReplace     = 1u << 7
+    AtomicReplace     = 1u << 7,
+    SequentialRead    = 1u << 8
 };
 
 constexpr StorageCapability operator|(StorageCapability lhs, StorageCapability rhs) {
