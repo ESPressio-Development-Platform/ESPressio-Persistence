@@ -1,15 +1,27 @@
 #pragma once
 
 #include <ESPressio_IKeyValueStorage.hpp>
+#include <ESPressio_Memory.hpp>
 #include <cstring>
-#include <map>
-#include <string>
-#include <vector>
+#include <functional>
 
 namespace ESPressio::Persistence {
 
 /// <summary>In-memory <c>IKeyValueStorage</c> implementation intended for volatile storage, host use, and tests.</summary>
+/// <remarks>Owned keys, values, and associative-container nodes use ESPressio System ExternalPreferred storage so the backend does not compete with capability-constrained internal RAM on PSRAM-capable targets.</remarks>
 class MemoryKeyValueStorage final : public IKeyValueStorage {
+private:
+    static constexpr auto ExternalPreferred =
+        System::Memory::MemoryPolicy::ExternalPreferred;
+    using StorageString = System::Memory::String<ExternalPreferred>;
+    using StorageBytes = System::Memory::ByteVector<ExternalPreferred>;
+    using ValueStorage = System::Memory::Map<
+        StorageString,
+        StorageBytes,
+        ExternalPreferred,
+        std::less<>
+    >;
+
 public:
     /// <inheritdoc/>
     StorageStatus Initialize() override {
@@ -34,7 +46,7 @@ public:
     StorageStatus Contains(const char* key, bool& exists) const override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(key)) return StorageStatus::InvalidArgument;
-        exists = _values.count(key) != 0;
+        exists = _values.find(key) != _values.end();
         return StorageStatus::Success;
     }
 
@@ -73,11 +85,24 @@ public:
     StorageStatus Write(const char* key, const uint8_t* data, std::size_t size) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(key) || (data == nullptr && size != 0)) return StorageStatus::InvalidArgument;
-        auto& value = _values[key];
-        if (size == 0) {
-            value.clear();
-        } else {
-            value.assign(data, data + size);
+
+        auto it = _values.find(key);
+        if (it == _values.end()) {
+            try {
+                it = _values.emplace(StorageString(key), StorageBytes{}).first;
+            } catch (...) {
+                return StorageStatus::NoSpace;
+            }
+        }
+
+        try {
+            if (size == 0) {
+                it->second.clear();
+            } else {
+                it->second.assign(data, data + size);
+            }
+        } catch (...) {
+            return StorageStatus::NoSpace;
         }
         return StorageStatus::Success;
     }
@@ -86,7 +111,10 @@ public:
     StorageStatus Remove(const char* key) override {
         if (!_ready) return StorageStatus::NotInitialized;
         if (!Valid(key)) return StorageStatus::InvalidArgument;
-        return _values.erase(key) != 0 ? StorageStatus::Success : StorageStatus::NotFound;
+        const auto it = _values.find(key);
+        if (it == _values.end()) return StorageStatus::NotFound;
+        _values.erase(it);
+        return StorageStatus::Success;
     }
 
     /// <inheritdoc/>
@@ -99,7 +127,7 @@ public:
 private:
     static bool Valid(const char* value) { return value != nullptr && *value != '\0'; }
     bool _ready = false;
-    std::map<std::string, std::vector<uint8_t>> _values;
+    ValueStorage _values;
 };
 
 } // namespace ESPressio::Persistence
