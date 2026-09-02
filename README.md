@@ -6,7 +6,7 @@ ESPressio Persistence gives application code a stable way to store and retrieve 
 
 ## Current version — 0.3.2
 
-0.3.2 is a dependency-maintenance release validating typed persistence against ESPressio Serializable 0.11.3 and protected typed persistence against ESPressio Security 0.4.2. The public storage and persistence APIs introduced through 0.3.0 are unchanged.
+During the release restructuring, typed persistence is validated against ESPressio Serializable `main`, and protected typed persistence is validated against ESPressio Security `main`. The public storage and persistence APIs introduced through 0.3.0 are unchanged.
 
 The active platform-abstraction tranche separates **storage semantics** from **target implementations**. ESPressio-Persistence owns `IStorageBackend`, `IFileStorage`, `IKeyValueStorage`, atomic replacement, serialization integration and persistence policy. ESP32-specific backends now live in **ESPressio-ESP32**.
 
