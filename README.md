@@ -2,13 +2,15 @@
 
 A capability-aware persistence foundation for the ESPressio Development Platform.
 
-ESPressio Persistence gives application code a stable way to store and retrieve data without coupling domain logic to LittleFS, SPIFFS, FAT, SD cards or ESP32 Preferences/NVS.
+ESPressio Persistence gives application code a stable way to store and retrieve data without coupling domain logic to LittleFS, SPIFFS, FAT, SD cards, Preferences/NVS, or another concrete storage implementation.
 
 ## Current version — 0.3.2
 
 0.3.2 is a dependency-maintenance release validating typed persistence against ESPressio Serializable 0.11.3 and protected typed persistence against ESPressio Security 0.4.2. The public storage and persistence APIs introduced through 0.3.0 are unchanged.
 
-Core Persistence remains dependency-free.
+The active platform-abstraction tranche separates **storage semantics** from **target implementations**. ESPressio-Persistence owns `IStorageBackend`, `IFileStorage`, `IKeyValueStorage`, atomic replacement, serialization integration and persistence policy. ESP32-specific backends now live in **ESPressio-ESP32**.
+
+Core Persistence remains platform-neutral and dependency-free.
 
 # Storage concepts
 
@@ -32,51 +34,62 @@ Both inherit `IStorageBackend` for initialization, readiness, capabilities and s
 
 ## Which backend should I choose?
 
-| Need | Recommended backend |
-| --- | --- |
-| Normal files/configuration in internal ESP32 flash | **LittleFS** |
-| Legacy SPIFFS project | **SPIFFS** |
-| FAT semantics in internal flash | **FFat** |
-| Small settings/records | **Preferences/NVS** |
-| External/removable SPI SD | **SD** |
-| Native SD/MMC | **SD_MMC** |
-| Host/unit tests | **MemoryFileStorage / MemoryKeyValueStorage** |
+| Need | Recommended backend | Provider |
+| --- | --- | --- |
+| Normal files/configuration in internal ESP32 flash | **LittleFS** | ESPressio-ESP32 |
+| Legacy SPIFFS project | **SPIFFS** | ESPressio-ESP32 |
+| FAT semantics in internal flash | **FFat** | ESPressio-ESP32 |
+| Small settings/records | **Preferences/NVS** | ESPressio-ESP32 |
+| External/removable SPI SD | **SD** | ESPressio-ESP32 |
+| Native SD/MMC | **SD_MMC** | ESPressio-ESP32 |
+| Host/unit tests | **MemoryFileStorage / MemoryKeyValueStorage** | ESPressio-Persistence |
 
 # Installation
 
-Core:
+During the coordinated platform-abstraction development tranche, portable Persistence is consumed from its working branch:
 
 ```ini
 lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.3.2
+    https://github.com/ESPressio-Development-Platform/ESPressio-Persistence.git#feature/10-platform-storage-abstractions
 ```
 
-Typed Serializable persistence:
+For ESP32 hardware-backed storage, add the platform provider as well:
 
 ```ini
 lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.3.2
-    espressio-development-platform/ESPressio-Serializable@^0.11.3
+    https://github.com/ESPressio-Development-Platform/ESPressio-Persistence.git#feature/10-platform-storage-abstractions
+    https://github.com/ESPressio-Development-Platform/ESPressio-ESP32.git#feature/1-system-memory-provider
 ```
 
-Protected typed persistence additionally requires Security:
-
-```ini
-lib_deps =
-    espressio-development-platform/ESPressio-Persistence@^0.3.2
-    espressio-development-platform/ESPressio-Serializable@^0.11.3
-    espressio-development-platform/ESPressio-Security@^0.4.2
-    espressio-development-platform/ESPressio-Observable@^3.0.2
-```
+Typed Serializable persistence additionally consumes Serializable; protected typed persistence additionally consumes Security. After the coordinated releases are published, use the normal released package/version ranges instead of development refs.
 
 Headers are deliberately opt-in:
 
 ```cpp
-#include <ESPressio_Persistence.hpp>                         // raw storage
-#include <ESPressio_ESP32Persistence.hpp>                    // ESP32 backends
+#include <ESPressio_Persistence.hpp>                         // raw portable storage contracts + memory backends
 #include <ESPressio_Persistence_Serializable.hpp>            // typed, unprotected
 #include <ESPressio_Persistence_Serializable_Security.hpp>   // typed + protected
+
+// ESP32 application/provider layer only:
+#include <ESPressio_ESP32Persistence.hpp>                    // LittleFS/SPIFFS/FFat/NVS/SD/SD_MMC implementations
 ```
+
+This split is intentional: a reusable library can depend on ESPressio-Persistence without acquiring Arduino, ESP32 filesystem, SD, or Preferences headers.
+
+# ESP32 backend ownership
+
+The following concrete implementations are supplied by ESPressio-ESP32 while continuing to implement Persistence-owned contracts:
+
+```text
+LittleFSStorage      -> IFileStorage
+SPIFFSStorage        -> IFileStorage
+FFatStorage          -> IFileStorage
+SDStorage            -> IFileStorage
+SDMMCStorage         -> IFileStorage
+PreferencesStorage   -> IKeyValueStorage
+```
+
+Application/domain code should normally store these through the `IFileStorage` / `IKeyValueStorage` interfaces or pass them into higher-level Persistence helpers. The concrete backend choice stays at the platform composition boundary.
 
 # The easiest protected configuration flow
 
@@ -103,13 +116,17 @@ public:
 };
 ```
 
-Configure Security once and package it in Serializable's protection config:
+Configure Security once and package it in Serializable's protection config. On ESP32, install ESPressio-ESP32's System providers before nonce generation so Security has its hardware entropy provider:
 
 ```cpp
+#include <ESPressio_ESP32.hpp>
+
+ESPressio::ESP32Platform::InstallSystemProviders();
+
 Security::AES256GCMCipher cipher;
 Security::AeadCipherRegistry ciphers;
 Security::StaticKeyProvider keys;
-Security::ESP32RandomSource randomSource;
+Security::SystemEntropyRandomSource randomSource;
 
 ciphers.Register(cipher);
 keys.Add(1, Security::AeadAlgorithm::AES256GCM, keyBytes, 32);
@@ -122,9 +139,11 @@ Serializable::SerializationProtectionConfig protection(
 );
 ```
 
-Then save through LittleFS:
+Then save through the ESP32 LittleFS provider:
 
 ```cpp
+#include <ESPressio_ESP32Persistence.hpp>
+
 LittleFSStorage storage(false);
 storage.Initialize();
 
@@ -163,6 +182,8 @@ Security::IDataProtector
 protected bytes
       ↓
 IFileStorage
+      ↓
+platform implementation (for example LittleFSStorage in ESPressio-ESP32)
 ```
 
 Loading performs the exact reverse, including normal Serializable schema migration/default/validation behavior after successful authentication.
@@ -189,7 +210,7 @@ LoadSerializable(
 );
 ```
 
-The application does not know whether the provider is LittleFS, Preferences, SD, FFat or a test implementation. Only the storage abstraction and locator differ.
+The persistence operation does not know whether the provider is LittleFS, Preferences, SD, FFat or a test implementation. Only the storage abstraction and locator differ.
 
 # Protection is optional
 
@@ -227,21 +248,11 @@ auto result = LoadSerializable(
 );
 
 if (!result) {
-    Serial.printf("storage=%s protected-serialization=%s\n",
-        StorageStatusName(result.Storage),
-        Serializable::ProtectedSerializationStatusName(
-            result.Serialization.Status
-        ));
-
-    if (!result.Serialization.SecurityResult.Success) {
-        Serial.printf("security error=%u message=%s\n",
-            static_cast<unsigned>(result.Serialization.SecurityResult.Error),
-            result.Serialization.SecurityResult.Message.c_str());
-    }
+    // Storage, protected-serialization and Security results remain distinct.
 }
 ```
 
-This lets callers distinguish storage/media failures from key/authentication failures and from schema/deserialization failures.
+This lets callers distinguish storage/media failures from key/authentication failures and from schema/deserialization failures without coupling Persistence to a logging or serial implementation.
 
 # File atomicity
 
@@ -260,7 +271,7 @@ The protected overload accepts `preferAtomicFileReplace=false` when a caller del
 
 # Typed unprotected persistence
 
-The ordinary typed APIs introduced in 0.2.0 are still available through `ESPressio_Persistence_Serializable.hpp` and use ESPB `BinaryArchive` directly.
+The ordinary typed APIs introduced in 0.2.0 remain available through `ESPressio_Persistence_Serializable.hpp` and use ESPB `BinaryArchive` directly.
 
 ```cpp
 LittleFSStorage files(false);
@@ -293,6 +304,8 @@ atomic.Replace("/config.bin", bytes, size);
 ```
 
 # Backend examples
+
+The following examples require `ESPressio_ESP32Persistence.hpp` from ESPressio-ESP32.
 
 LittleFS:
 
@@ -334,7 +347,7 @@ Capabilities expose hierarchical/key-value semantics, directories, rename, appen
 
 # Format-on-failure policy
 
-LittleFS, SPIFFS and FFat accept `formatOnFailure`. The default is deliberately `false` so a mount failure does not silently destroy persisted data.
+The ESP32 LittleFS, SPIFFS and FFat implementations accept `formatOnFailure`. The default is deliberately `false` so a mount failure does not silently destroy persisted data.
 
 ```cpp
 LittleFSStorage conservative(false);
@@ -342,6 +355,8 @@ LittleFSStorage recoverByFormatting(true);
 ```
 
 # Host testing
+
+Portable in-memory implementations remain in ESPressio-Persistence itself:
 
 ```cpp
 MemoryFileStorage files;
@@ -356,6 +371,19 @@ Both typed and protected typed APIs can be exercised against these implementatio
 # Architecture
 
 ```text
+Application / domain logic
+          |
+          v
+Persistence contracts + policy
+  IFileStorage / IKeyValueStorage
+          |
+          +--------------------------+
+          |                          |
+          v                          v
+portable memory backend       platform implementation
+(Persistence)                 (e.g. ESPressio-ESP32)
+
+Optional typed path:
 Application object
        |
        v
@@ -365,28 +393,29 @@ Serializable
        |                                       |
        +---- optional Security protection -----+
                                                |
-                                    Persistence storage
-                                      /            \
-                               IFileStorage   IKeyValueStorage
+                                    Persistence storage contract
 ```
 
-Dependency direction:
+Dependency direction during this tranche:
 
 ```text
 Persistence core
     -> none
 
+ESPressio-ESP32 persistence providers
+    -> Persistence contracts
+
 Persistence Serializable integration
-    - - -> Serializable >= 0.11.3 < 1.0.0
+    - - -> Serializable
 
 Persistence protected Serializable integration
-    - - -> Serializable >= 0.11.3 < 1.0.0
-            - - -> Security >= 0.4.2 < 1.0.0
+    - - -> Serializable
+            - - -> Security
 ```
 
-Persistence itself never depends directly on a cipher, key provider or concrete Security implementation.
+Persistence itself never depends directly on a filesystem SDK, cipher, key provider or concrete Security implementation.
 
-See [ESPRESSIO_DEPENDENCY_CHART.md](ESPRESSIO_DEPENDENCY_CHART.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+See [ESPRESSIO_DEPENDENCY_CHART.md](ESPRESSIO_DEPENDENCY_CHART.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [PLATFORM_ABSTRACTIONS.md](PLATFORM_ABSTRACTIONS.md).
 
 # Reliability principles
 
@@ -400,10 +429,11 @@ See [ESPRESSIO_DEPENDENCY_CHART.md](ESPRESSIO_DEPENDENCY_CHART.md) and [docs/ARC
 8. Serializable persistence retains schema-evolution support.
 9. Protected persistence authenticates before deserialization.
 10. Optional integrations do not force dependencies on core-only consumers.
+11. Hardware/backend choice remains outside reusable persistence-domain code.
 
 # Testing
 
-Coverage includes raw backend conformance, atomic replacement and rollback, typed file/key-value round trips, malformed data, resource limits, protected file/key-value round trips, authenticated-context rejection, atomic cleanup and unprotected compatibility. CI additionally compiles the protected ESP32 LittleFS/Preferences surface against released Serializable 0.11.3 and Security 0.4.2, with Observable 3.0.2.
+Core and host coverage includes memory-backend conformance, atomic replacement and rollback, typed file/key-value round trips, malformed data, resource limits, protected round trips, authenticated-context rejection, atomic cleanup and unprotected compatibility. ESP32 backend conformance belongs with the ESPressio-ESP32 integration build now that those concrete implementations are platform-owned.
 
 # License
 

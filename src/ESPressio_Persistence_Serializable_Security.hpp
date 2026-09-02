@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <vector>
 
 #include "ESPressio_Persistence_Serializable.hpp"
 #include <ESPressio_Serializable_Security.hpp>
@@ -34,7 +33,6 @@ inline ProtectedSerializablePersistenceResult MakeProtectedStorageFailure(
 
 } // namespace Detail
 
-// Protected Serializable persistence for any file-oriented backend.
 template<typename TObject>
 ProtectedSerializablePersistenceResult SaveSerializable(
     IFileStorage& storage,
@@ -51,7 +49,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     }
 
     ProtectedSerializablePersistenceResult result;
-    std::vector<uint8_t> bytes;
+    Serializable::SerializationBuffer<uint8_t> bytes;
     result.Serialization = Serializable::SerializeProtectedBinary(
         object,
         bytes,
@@ -101,7 +99,7 @@ ProtectedSerializablePersistenceResult LoadSerializable(
         return result;
     }
 
-    std::vector<uint8_t> bytes(static_cast<std::size_t>(entry.size));
+    Serializable::SerializationBuffer<uint8_t> bytes(static_cast<std::size_t>(entry.size));
     std::size_t bytesRead = 0;
     status = storage.Read(path, 0, bytes.data(), bytes.size(), bytesRead);
     if (status != StorageStatus::Success) return Detail::MakeProtectedStorageFailure(status);
@@ -118,7 +116,6 @@ ProtectedSerializablePersistenceResult LoadSerializable(
     return result;
 }
 
-// Protected Serializable persistence for any key/value backend.
 template<typename TObject>
 ProtectedSerializablePersistenceResult SaveSerializable(
     IKeyValueStorage& storage,
@@ -134,7 +131,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     }
 
     ProtectedSerializablePersistenceResult result;
-    std::vector<uint8_t> bytes;
+    Serializable::SerializationBuffer<uint8_t> bytes;
     result.Serialization = Serializable::SerializeProtectedBinary(
         object,
         bytes,
@@ -165,7 +162,7 @@ ProtectedSerializablePersistenceResult LoadSerializable(
     StorageStatus status = storage.GetSize(key, size);
     if (status != StorageStatus::Success) return Detail::MakeProtectedStorageFailure(status);
 
-    std::vector<uint8_t> bytes(size);
+    Serializable::SerializationBuffer<uint8_t> bytes(size);
     std::size_t bytesRead = 0;
     status = storage.Read(key, bytes.data(), bytes.size(), bytesRead);
     if (status != StorageStatus::Success) return Detail::MakeProtectedStorageFailure(status);

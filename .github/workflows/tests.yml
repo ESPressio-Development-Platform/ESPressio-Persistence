@@ -2,21 +2,29 @@ name: Persistence Tests
 
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: project/ESPressio-Persistence
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-System
+          ref: feature/1-system-memory-policy
+          path: project/ESPressio-System
       - name: Configure
-        run: cmake -S . -B build
+        run: >-
+          cmake -S project/ESPressio-Persistence
+          -B project/ESPressio-Persistence/build
+          -DESPRESSIO_SYSTEM_SOURCE_DIR="$PWD/project/ESPressio-System"
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build project/ESPressio-Persistence/build --parallel
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir project/ESPressio-Persistence/build --output-on-failure
 
   serializable-host-tests:
     runs-on: ubuntu-latest
@@ -27,24 +35,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Serializable
-          ref: 0.11.3
+          ref: optimisation/25-psram-buffers
           path: project/ESPressio-Serializable
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Security
-          ref: 0.4.2
+          ref: optimisation/23-memory-policy-transient-buffers
           path: project/ESPressio-Security
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-System
+          ref: feature/1-system-memory-policy
+          path: project/ESPressio-System
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Observable
+          ref: feature/16-rtti-free-observer-registry
+          path: project/ESPressio-Observable
       - name: Compile Serializable persistence tests
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
             -I project/ESPressio-Persistence/src \
             -I project/ESPressio-Serializable/src \
+            -I project/ESPressio-System/src \
             project/ESPressio-Persistence/tests/serializable_persistence_tests.cpp \
             -o project/serializable_persistence_tests
           g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
             -I project/ESPressio-Persistence/src \
             -I project/ESPressio-Serializable/src \
             -I project/ESPressio-Security/src \
+            -I project/ESPressio-System/src \
+            -I project/ESPressio-Observable/src \
             project/ESPressio-Persistence/tests/protected_serializable_persistence_tests.cpp \
             -o project/protected_serializable_persistence_tests
       - name: Run Serializable persistence tests
@@ -61,18 +82,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Serializable
-          ref: 0.11.3
+          ref: optimisation/25-psram-buffers
           path: project/ESPressio-Serializable
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Security
-          ref: 0.4.2
+          ref: optimisation/23-memory-policy-transient-buffers
           path: project/ESPressio-Security
       - uses: actions/checkout@v4
         with:
           repository: ESPressio-Development-Platform/ESPressio-Observable
-          ref: 3.0.2
+          ref: feature/16-rtti-free-observer-registry
           path: project/ESPressio-Observable
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-System
+          ref: feature/1-system-memory-policy
+          path: project/ESPressio-System
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -94,10 +120,11 @@ jobs:
               ../ESPressio-Serializable
               ../ESPressio-Security
               ../ESPressio-Observable
+              ../ESPressio-System
           EOF
           cat > project/compile/src/main.cpp <<'EOF'
           #include <Arduino.h>
-          #include <ESPressio_ESP32Persistence.hpp>
+          #include <ESPressio_Persistence.hpp>
           #include <ESPressio_Persistence_Serializable.hpp>
           #include <ESPressio_Persistence_Serializable_Security.hpp>
           #include <ESPressio_Security.hpp>
@@ -114,24 +141,26 @@ jobs:
               ESPRESSIO_SERIALIZABLE_PROPERTIES(ESPRESSIO_PROPERTY("counter", _counter))
           };
 
-          LittleFSStorage littlefs(false);
-          PreferencesStorage preferences("test");
+          MemoryFileStorage files;
+          MemoryKeyValueStorage values;
           Security::AES256GCMCipher cipher;
           Security::AeadCipherRegistry ciphers;
           Security::StaticKeyProvider keys;
-          Security::ESP32RandomSource randomSource;
+          Security::RandomSource randomSource;
 
           void setup() {
               uint8_t key[32]{};
+              (void)files.Initialize();
+              (void)values.Initialize();
               ciphers.Register(cipher);
               keys.Add(1, Security::AeadAlgorithm::AES256GCM, key, sizeof(key));
               Security::DataProtector protector(ciphers, keys, randomSource);
               Serializable::SerializationProtectionConfig protection(protector, "test.config");
               Configuration value;
-              (void)SaveSerializable(littlefs, "/value.bin", value, protection);
-              (void)LoadSerializable(littlefs, "/value.bin", value, protection);
-              (void)SaveSerializable(preferences, "value", value, protection);
-              (void)LoadSerializable(preferences, "value", value, protection);
+              (void)SaveSerializable(files, "/value.bin", value, protection);
+              (void)LoadSerializable(files, "/value.bin", value, protection);
+              (void)SaveSerializable(values, "value", value, protection);
+              (void)LoadSerializable(values, "value", value, protection);
           }
           void loop() {}
           EOF
