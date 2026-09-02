@@ -7,11 +7,11 @@ Persistence core 0.3.2
     -> none
 
 Persistence Serializable integration
-    - - -> Serializable >= 0.11.3 < 1.0.0
+    - - -> Serializable main
 
 Persistence protected Serializable integration
-    - - -> Serializable >= 0.11.3 < 1.0.0
-            - - -> Security >= 0.4.2 < 1.0.0
+    - - -> Serializable main
+            - - -> Security main
 ```
 
 Headers make the distinction explicit:
