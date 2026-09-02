@@ -13,15 +13,15 @@
     "dependencies": [
         {
             "name": "ESPressio-Serializable",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Serializable.git#main"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Serializable.git#structural_realignment"
         },
         {
             "name": "ESPressio-Security",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Security.git#main"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Security.git#structural_realignment"
         },
         {
             "name": "ESPressio-System",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-System.git#main"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-System.git#structural_realignment"
         }
     ]
 }
