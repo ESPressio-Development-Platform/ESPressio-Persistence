@@ -13,15 +13,15 @@
     "dependencies": [
         {
             "name": "ESPressio-Serializable",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Serializable.git#optimisation/25-psram-buffers"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Serializable.git#main"
         },
         {
             "name": "ESPressio-Security",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Security.git#optimisation/23-memory-policy-transient-buffers"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Security.git#main"
         },
         {
             "name": "ESPressio-System",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-System.git#feature/1-system-memory-policy"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-System.git#main"
         }
     ]
 }
