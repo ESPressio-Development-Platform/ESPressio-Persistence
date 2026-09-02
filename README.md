@@ -46,22 +46,22 @@ Both inherit `IStorageBackend` for initialization, readiness, capabilities and s
 
 # Installation
 
-During the coordinated platform-abstraction development tranche, portable Persistence is consumed from its working branch:
+During the coordinated platform-abstraction development tranche, portable Persistence is consumed from `main`:
 
 ```ini
 lib_deps =
-    https://github.com/ESPressio-Development-Platform/ESPressio-Persistence.git#feature/10-platform-storage-abstractions
+    https://github.com/ESPressio-Development-Platform/ESPressio-Persistence.git#main
 ```
 
 For ESP32 hardware-backed storage, add the platform provider as well:
 
 ```ini
 lib_deps =
-    https://github.com/ESPressio-Development-Platform/ESPressio-Persistence.git#feature/10-platform-storage-abstractions
-    https://github.com/ESPressio-Development-Platform/ESPressio-ESP32.git#feature/1-system-memory-provider
+    https://github.com/ESPressio-Development-Platform/ESPressio-Persistence.git#main
+    https://github.com/ESPressio-Development-Platform/ESPressio-ESP32.git#main
 ```
 
-Typed Serializable persistence additionally consumes Serializable; protected typed persistence additionally consumes Security. After the coordinated releases are published, use the normal released package/version ranges instead of development refs.
+Typed Serializable persistence additionally consumes Serializable; protected typed persistence additionally consumes Security. During the release restructuring, consume those ESPressio dependencies from their `main` branches until the new platform-wide 1.0.0 release generation is published.
 
 Headers are deliberately opt-in:
 
