@@ -97,6 +97,12 @@ void TestRequiresReadyBoundedCapableStorage() {
         storage, "/blocking", "device.log", Policy(512U, 256U, 2U),
         Logging::AllLogLevels, Logging::LogBufferOverflowPolicy::Block);
     assert(blocking.Initialize() == Persistence::StorageStatus::InvalidArgument);
+
+    // A configuration must always be capable of persisting the worst-case synthetic loss notice. Otherwise a
+    // saturated queue could create a pending diagnostic record that can never be drained successfully.
+    Persistence::PersistentLogSink<256U, 4U> undersizedLossNotice(
+        storage, "/undersized", "device.log", Policy(106U, 53U, 2U));
+    assert(undersizedLossNotice.Initialize() == Persistence::StorageStatus::InvalidArgument);
 }
 
 void TestAcceptDoesNotPerformStorageIO() {
