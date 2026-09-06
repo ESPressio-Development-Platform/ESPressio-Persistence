@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <string_view>
 #include <type_traits>
@@ -20,21 +21,33 @@
 namespace ESPressio::Persistence {
 
 /// <summary>
-/// Synchronously materialises structured ESPressio log records into a bounded rolling IFileStorage file set.
+/// Materialises structured ESPressio log records into a bounded RAM queue and flushes them into a bounded rolling
+/// IFileStorage file set only when the owning composition explicitly requests storage work.
 /// </summary>
 /// <remarks>
-/// The Sink does not own the storage backend and never retains a Logging::LogRecordLease. A complete record is
-/// rendered into a fixed-capacity buffer and written before Accept() returns, preserving Logging's borrowed-lifetime
-/// contract. Generation zero is the active file; higher generations are progressively older.
+/// Accept() never performs filesystem I/O and never retains a Logging::LogRecordLease. The complete borrowed record
+/// is rendered into a fixed-capacity queue slot before Accept() returns, preserving Logging's "borrow across calls;
+/// own across time" contract while keeping flash latency away from arbitrary logging caller threads.
 ///
-/// This implementation deliberately accepts only fully bounded RollingLogPolicy values. Persistent flash logging
-/// should never obtain unlimited retention implicitly or explicitly. Storage failures update local status/statistics;
-/// the Sink never emits a log from its own failure path, avoiding Logger -> Sink -> Logger recursion.
+/// Generation zero is the active file; higher generations are progressively older. This Sink accepts only fully
+/// bounded RollingLogPolicy values and a bounded queue. LogBufferOverflowPolicy::Block is deliberately unsupported:
+/// a persistent diagnostic Sink must not turn a radio/ISR-adjacent/worker log call into an unbounded wait on storage.
+///
+/// Flush()/FlushOne() are explicit. Applications should call them from a non-critical owner context. DropOldest is
+/// the default queue policy; dropped records accumulate a synthetic dropped_entries record which is written at the
+/// next successful flush opportunity. Storage failures never recursively log through Logger.
+///
+/// The injected IFileStorage is non-owning and should not be externally mutated at the Sink's managed paths while
+/// the Sink is initialized.
 /// </remarks>
-template<std::size_t MaximumRecordBytes = 1024U, std::size_t MaximumFiles = 16U>
+template<
+    std::size_t MaximumRecordBytes = 1024U,
+    std::size_t MaximumFiles = 16U,
+    std::size_t QueueCapacity = 8U>
 class PersistentLogSink final : public Logging::ILogSink {
     static_assert(MaximumRecordBytes >= 64U, "Persistent log record capacity is unrealistically small.");
     static_assert(MaximumFiles > 0U, "Persistent log generation capacity must be non-zero.");
+    static_assert(QueueCapacity > 0U, "Persistent log queue capacity must be non-zero.");
 
 public:
     using ReadCallback = bool (*)(const std::uint8_t* data, std::size_t size, void* context);
@@ -44,18 +57,23 @@ public:
         const char* directory,
         const char* fileName,
         const Logging::RollingLogPolicy& policy,
-        Logging::LogLevelMask levelMask = Logging::AllLogLevels
+        Logging::LogLevelMask levelMask = Logging::AllLogLevels,
+        Logging::LogBufferOverflowPolicy overflowPolicy = Logging::LogBufferOverflowPolicy::DropOldest
     ) noexcept :
-        _storage(&storage), _policy(policy), _levelMask(levelMask) {
+        _storage(&storage),
+        _policy(policy),
+        _levelMask(levelMask),
+        _overflowPolicy(overflowPolicy) {
         CopyText(_directory, directory);
         CopyText(_fileName, fileName);
     }
 
     /// <summary>
-    /// Discovers retained generations and enables the Sink. The injected IFileStorage must already be initialized.
+    /// Discovers retained generations and enables queue admission. The injected IFileStorage must already be ready.
     /// </summary>
     StorageStatus Initialize() noexcept {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::lock_guard<std::mutex> flushLock(_flushMutex);
+        std::lock_guard<std::mutex> storageLock(_storageMutex);
         if (_initialized.load(std::memory_order_acquire)) return SetStatus(StorageStatus::AlreadyInitialized);
         if (_storage == nullptr || !_storage->IsReady()) return SetStatus(StorageStatus::NotInitialized);
         if (!ConfigurationIsValid()) return SetStatus(StorageStatus::InvalidArgument);
@@ -115,14 +133,18 @@ public:
 
         const auto pruned = PruneToTotalCapacity();
         if (pruned != StorageStatus::Success) return SetStatus(pruned);
+        _maintenance.store(false, std::memory_order_release);
         _initialized.store(true, std::memory_order_release);
         return SetStatus(StorageStatus::Success);
     }
 
-    /// <summary>Stops accepting records. It does not shut down the injected storage backend.</summary>
+    /// <summary>
+    /// Stops queue admission and waits for an in-flight flush call to leave storage code. Queued records remain owned
+    /// by the Sink and can be flushed if the same Sink instance is initialized again.
+    /// </summary>
     void Shutdown() noexcept {
-        std::lock_guard<std::mutex> lock(_mutex);
         _initialized.store(false, std::memory_order_release);
+        std::lock_guard<std::mutex> flushLock(_flushMutex);
     }
 
     bool IsInitialized() const noexcept { return _initialized.load(std::memory_order_acquire); }
@@ -139,73 +161,166 @@ public:
         return IsInitialized() && Logging::ContainsLevel(GetLevelMask(), level);
     }
 
+    /// <summary>
+    /// Encodes and enqueues one record. No IFileStorage operation is reachable from this call path.
+    /// </summary>
     void Accept(const Logging::LogRecordLease& record) noexcept override {
         if (!IsInitialized()) return;
         const auto& view = record.View();
         if (!Logging::ContainsLevel(GetLevelMask(), view.Level)) {
-            std::lock_guard<std::mutex> lock(_mutex);
-            ++_statistics.FilteredRecords;
+            _filteredRecords.fetch_add(1U, std::memory_order_relaxed);
             return;
         }
 
-        std::lock_guard<std::mutex> lock(_mutex);
-        if (!_initialized.load(std::memory_order_relaxed) || _storage == nullptr || !_storage->IsReady()) {
-            ++_statistics.WriteFailures;
-            (void)SetStatus(StorageStatus::NotInitialized);
-            return;
-        }
+        std::lock_guard<std::mutex> queueLock(_queueMutex);
+        if (!_initialized.load(std::memory_order_relaxed)) return;
 
-        Writer writer(_recordBuffer);
+        Writer writer(_encodeBuffer);
         if (!Encode(view, writer) || writer.Size() == 0U ||
             writer.Size() > FileCapacity() || writer.Size() > TotalCapacity()) {
-            ++_statistics.DroppedRecords;
+            NoteDroppedLocked(1U);
             (void)SetStatus(StorageStatus::NoSpace);
             return;
         }
 
-        if (_exists[0U] && _sizes[0U] + writer.Size() > FileCapacity()) {
-            const auto rotated = Rotate();
-            if (rotated != StorageStatus::Success) {
-                ++_statistics.WriteFailures;
-                (void)SetStatus(rotated);
-                return;
+        if (_queueSize == QueueCapacity) {
+            switch (_overflowPolicy) {
+                case Logging::LogBufferOverflowPolicy::DropOldest:
+                    _queue[_queueHead].Size = 0U;
+                    _queueHead = (_queueHead + 1U) % QueueCapacity;
+                    --_queueSize;
+                    NoteDroppedLocked(1U);
+                    break;
+                case Logging::LogBufferOverflowPolicy::DropNewest:
+                case Logging::LogBufferOverflowPolicy::Reject:
+                    NoteDroppedLocked(1U);
+                    return;
+                case Logging::LogBufferOverflowPolicy::Block:
+                    // Block is rejected during Initialize(); this is a defensive no-wait fallback.
+                    NoteDroppedLocked(1U);
+                    return;
             }
         }
 
-        const auto pruned = PruneForAppend(writer.Size());
-        if (pruned != StorageStatus::Success) {
-            ++_statistics.WriteFailures;
-            (void)SetStatus(pruned);
-            return;
-        }
-
-        char path[StorageEntry::MaximumPathLength]{};
-        if (!BuildPath(0U, path, sizeof(path))) {
-            ++_statistics.WriteFailures;
-            (void)SetStatus(StorageStatus::InvalidArgument);
-            return;
-        }
-        const auto status = _storage->Write(path, writer.Data(), writer.Size(), WriteMode::Append);
-        if (status != StorageStatus::Success) {
-            ++_statistics.WriteFailures;
-            (void)SetStatus(status);
-            return;
-        }
-
-        _exists[0U] = true;
-        _sizes[0U] += writer.Size();
-        _retainedBytes += writer.Size();
-        ++_statistics.AcceptedRecords;
-        _statistics.BytesWritten += writer.Size();
-        (void)SetStatus(StorageStatus::Success);
+        auto& destination = _queue[_queueTail];
+        std::memcpy(destination.Bytes.data(), writer.Data(), writer.Size());
+        destination.Size = writer.Size();
+        _queueTail = (_queueTail + 1U) % QueueCapacity;
+        ++_queueSize;
+        _acceptedRecords.fetch_add(1U, std::memory_order_relaxed);
+        UpdateQueueHighWaterMark(_queueSize);
     }
 
-    /// <summary>Deletes every retained generation while leaving the Sink initialized.</summary>
+    /// <summary>
+    /// Flushes at most one synthetic drop notice or one queued record. Filesystem I/O occurs only in this method.
+    /// </summary>
+    StorageStatus FlushOne() noexcept {
+        if (!IsInitialized()) return SetStatus(StorageStatus::NotInitialized);
+        if (_maintenance.load(std::memory_order_acquire)) return SetStatus(StorageStatus::Busy);
+
+        std::lock_guard<std::mutex> flushLock(_flushMutex);
+        if (!IsInitialized()) return SetStatus(StorageStatus::NotInitialized);
+        if (_maintenance.load(std::memory_order_acquire)) return SetStatus(StorageStatus::Busy);
+
+        std::uint64_t droppedNotice = 0U;
+        bool hasRecord = false;
+        std::size_t recordSize = 0U;
+        {
+            std::lock_guard<std::mutex> queueLock(_queueMutex);
+            if (_pendingDropNotice != 0U) {
+                droppedNotice = _pendingDropNotice;
+                _pendingDropNotice = 0U;
+            } else if (_queueSize != 0U) {
+                auto& source = _queue[_queueHead];
+                recordSize = source.Size;
+                if (recordSize != 0U) {
+                    std::memcpy(_flushBuffer.data(), source.Bytes.data(), recordSize);
+                    hasRecord = true;
+                }
+                source.Size = 0U;
+                _queueHead = (_queueHead + 1U) % QueueCapacity;
+                --_queueSize;
+            } else {
+                return SetStatus(StorageStatus::Success);
+            }
+        }
+
+        if (droppedNotice != 0U) {
+            const int length = std::snprintf(
+                reinterpret_cast<char*>(_flushBuffer.data()),
+                _flushBuffer.size(),
+                "[PERSISTENT_LOG] dropped_entries=%llu\n",
+                static_cast<unsigned long long>(droppedNotice));
+            if (length <= 0 || static_cast<std::size_t>(length) >= _flushBuffer.size()) {
+                RestoreDropNotice(droppedNotice);
+                return SetStatus(StorageStatus::NoSpace);
+            }
+            recordSize = static_cast<std::size_t>(length);
+            hasRecord = true;
+        }
+
+        if (!hasRecord || recordSize == 0U) return SetStatus(StorageStatus::Success);
+
+        StorageStatus status = StorageStatus::UnknownError;
+        {
+            std::lock_guard<std::mutex> storageLock(_storageMutex);
+            if (_storage == nullptr || !_storage->IsReady()) {
+                status = StorageStatus::NotInitialized;
+            } else {
+                status = AppendDurable(_flushBuffer.data(), recordSize);
+            }
+        }
+
+        if (status == StorageStatus::Success) {
+            _bytesWritten.fetch_add(recordSize, std::memory_order_relaxed);
+            return SetStatus(status);
+        }
+
+        _writeFailures.fetch_add(1U, std::memory_order_relaxed);
+        if (droppedNotice != 0U) {
+            RestoreDropNotice(droppedNotice);
+        } else {
+            _droppedRecords.fetch_add(1U, std::memory_order_relaxed);
+            RestoreDropNotice(1U);
+        }
+        return SetStatus(status);
+    }
+
+    /// <summary>
+    /// Performs bounded owner-context storage work. A value of zero performs no work.
+    /// </summary>
+    StorageStatus Flush(std::size_t maximumWorkItems = 1U) noexcept {
+        if (maximumWorkItems == 0U) return StorageStatus::Success;
+        StorageStatus status = StorageStatus::Success;
+        for (std::size_t index = 0U; index < maximumWorkItems; ++index) {
+            if (!HasPendingWork()) break;
+            status = FlushOne();
+            if (status != StorageStatus::Success) break;
+        }
+        return status;
+    }
+
+    /// <summary>
+    /// Deletes retained files and queued records as one maintenance operation. Lifetime statistics are preserved.
+    /// </summary>
     StorageStatus Clear() noexcept {
-        std::lock_guard<std::mutex> lock(_mutex);
-        if (!_initialized.load(std::memory_order_relaxed) || _storage == nullptr || !_storage->IsReady()) {
+        if (!BeginMaintenance()) return SetStatus(StorageStatus::Busy);
+        MaintenanceGuard maintenanceGuard(_maintenance);
+        std::lock_guard<std::mutex> flushLock(_flushMutex);
+        if (!IsInitialized() || _storage == nullptr || !_storage->IsReady()) {
             return SetStatus(StorageStatus::NotInitialized);
         }
+
+        {
+            std::lock_guard<std::mutex> queueLock(_queueMutex);
+            for (auto& record : _queue) record.Size = 0U;
+            _queueHead = 0U;
+            _queueTail = 0U;
+            _queueSize = 0U;
+            _pendingDropNotice = 0U;
+        }
+
+        std::lock_guard<std::mutex> storageLock(_storageMutex);
         for (std::size_t generation = 0U; generation < FileCount(); ++generation) {
             const auto status = RemoveGeneration(generation);
             if (status != StorageStatus::Success) return SetStatus(status);
@@ -214,60 +329,87 @@ public:
     }
 
     /// <summary>
-    /// Visits retained bytes oldest-generation first while holding the Sink mutex, producing a stable dump snapshot.
-    /// The callback must not log or call back into this Sink.
+    /// Visits persisted bytes oldest-generation first. Storage mutation is paused for the snapshot, but Accept()
+    /// remains non-blocking and continues to enqueue records in RAM. Slow callbacks therefore do not hold the queue
+    /// mutex or impose filesystem latency on logging callers; queue overflow remains governed by the configured
+    /// LogBufferOverflowPolicy and is reported by the next synthetic drop notice.
     /// </summary>
     StorageStatus VisitRetained(ReadCallback callback, void* context = nullptr) const noexcept {
         if (callback == nullptr) return StorageStatus::InvalidArgument;
-        std::lock_guard<std::mutex> lock(_mutex);
-        if (!_initialized.load(std::memory_order_relaxed) || _storage == nullptr || !_storage->IsReady()) {
-            return StorageStatus::NotInitialized;
+        if (!BeginMaintenance()) return SetStatus(StorageStatus::Busy);
+        MaintenanceGuard maintenanceGuard(_maintenance);
+        std::lock_guard<std::mutex> flushLock(_flushMutex);
+        if (!IsInitialized() || _storage == nullptr || !_storage->IsReady()) {
+            return SetStatus(StorageStatus::NotInitialized);
+        }
+
+        std::array<bool, MaximumFiles> exists{};
+        std::array<std::uint64_t, MaximumFiles> sizes{};
+        {
+            std::lock_guard<std::mutex> storageLock(_storageMutex);
+            exists = _exists;
+            sizes = _sizes;
         }
 
         std::array<std::uint8_t, 256U> chunk{};
         for (std::size_t remaining = FileCount(); remaining > 0U; --remaining) {
             const std::size_t generation = remaining - 1U;
-            if (!_exists[generation]) continue;
+            if (!exists[generation]) continue;
             char path[StorageEntry::MaximumPathLength]{};
-            if (!BuildPath(generation, path, sizeof(path))) return StorageStatus::InvalidArgument;
+            if (!BuildPath(generation, path, sizeof(path))) return SetStatus(StorageStatus::InvalidArgument);
             std::uint64_t offset = 0U;
-            const auto snapshotSize = _sizes[generation];
-            while (offset < snapshotSize) {
-                const auto available = snapshotSize - offset;
+            while (offset < sizes[generation]) {
+                const auto available = sizes[generation] - offset;
                 const std::size_t requested = available < chunk.size()
                     ? static_cast<std::size_t>(available)
                     : chunk.size();
                 std::size_t bytesRead = 0U;
                 const auto status = _storage->Read(path, offset, chunk.data(), requested, bytesRead);
-                if (status != StorageStatus::Success) return status;
-                if (bytesRead == 0U) return StorageStatus::IoError;
-                if (!callback(chunk.data(), bytesRead, context)) return StorageStatus::Success;
+                if (status != StorageStatus::Success) return SetStatus(status);
+                if (bytesRead == 0U) return SetStatus(StorageStatus::IoError);
+                if (!callback(chunk.data(), bytesRead, context)) return SetStatus(StorageStatus::Success);
                 offset += bytesRead;
             }
         }
-        return StorageStatus::Success;
+        return SetStatus(StorageStatus::Success);
     }
 
     std::size_t GenerationCapacity() const noexcept { return FileCount(); }
 
     bool GenerationExists(std::size_t generation) const noexcept {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::lock_guard<std::mutex> storageLock(_storageMutex);
         return generation < FileCount() && _exists[generation];
     }
 
     std::uint64_t GenerationSize(std::size_t generation) const noexcept {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::lock_guard<std::mutex> storageLock(_storageMutex);
         return generation < FileCount() && _exists[generation] ? _sizes[generation] : 0U;
     }
 
     std::uint64_t RetainedBytes() const noexcept {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::lock_guard<std::mutex> storageLock(_storageMutex);
         return _retainedBytes;
     }
 
+    std::size_t QueuedRecords() const noexcept {
+        std::lock_guard<std::mutex> queueLock(_queueMutex);
+        return _queueSize;
+    }
+
+    bool HasPendingWork() const noexcept {
+        std::lock_guard<std::mutex> queueLock(_queueMutex);
+        return _queueSize != 0U || _pendingDropNotice != 0U;
+    }
+
     Logging::LogSinkStatistics GetStatistics() const noexcept {
-        std::lock_guard<std::mutex> lock(_mutex);
-        return _statistics;
+        Logging::LogSinkStatistics statistics{};
+        statistics.AcceptedRecords = _acceptedRecords.load(std::memory_order_relaxed);
+        statistics.FilteredRecords = _filteredRecords.load(std::memory_order_relaxed);
+        statistics.DroppedRecords = _droppedRecords.load(std::memory_order_relaxed);
+        statistics.WriteFailures = _writeFailures.load(std::memory_order_relaxed);
+        statistics.BytesWritten = _bytesWritten.load(std::memory_order_relaxed);
+        statistics.QueueHighWaterMark = _queueHighWaterMark.load(std::memory_order_relaxed);
+        return statistics;
     }
 
     StorageStatus GetLastStorageStatus() const noexcept {
@@ -275,6 +417,21 @@ public:
     }
 
 private:
+    struct QueuedRecord final {
+        std::array<std::uint8_t, MaximumRecordBytes> Bytes{};
+        std::size_t Size{0U};
+    };
+
+    class MaintenanceGuard final {
+    public:
+        explicit MaintenanceGuard(std::atomic<bool>& flag) noexcept : _flag(flag) {}
+        ~MaintenanceGuard() { _flag.store(false, std::memory_order_release); }
+        MaintenanceGuard(const MaintenanceGuard&) = delete;
+        MaintenanceGuard& operator=(const MaintenanceGuard&) = delete;
+    private:
+        std::atomic<bool>& _flag;
+    };
+
     class Writer final {
     public:
         explicit Writer(std::array<std::uint8_t, MaximumRecordBytes>& buffer) noexcept : _buffer(buffer) {}
@@ -394,7 +551,8 @@ private:
             _policy.FileCapacity.CapacityMode != Logging::LogByteCapacity::Mode::Bounded ||
             _policy.FileCount.CapacityMode != Logging::LogCountCapacity::Mode::Bounded ||
             _policy.FileCount.Count == 0U || _policy.FileCount.Count > MaximumFiles ||
-            _policy.TotalCapacity.Bytes < _policy.FileCapacity.Bytes) return false;
+            _policy.TotalCapacity.Bytes < _policy.FileCapacity.Bytes ||
+            _overflowPolicy == Logging::LogBufferOverflowPolicy::Block) return false;
         char path[StorageEntry::MaximumPathLength]{};
         return BuildPath(_policy.FileCount.Count - 1U, path, sizeof(path));
     }
@@ -426,10 +584,41 @@ private:
         return written > 0 && static_cast<std::size_t>(written) < outputBytes;
     }
 
+    bool BeginMaintenance() const noexcept {
+        bool expected = false;
+        return _maintenance.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
+    }
+
     void ResetDiscoveredState() noexcept {
         _exists.fill(false);
         _sizes.fill(0U);
         _retainedBytes = 0U;
+    }
+
+    void UpdateQueueHighWaterMark(std::size_t value) noexcept {
+        auto current = _queueHighWaterMark.load(std::memory_order_relaxed);
+        while (value > current &&
+               !_queueHighWaterMark.compare_exchange_weak(
+                   current, value, std::memory_order_relaxed, std::memory_order_relaxed)) {}
+    }
+
+    void NoteDroppedLocked(std::uint64_t count) noexcept {
+        _droppedRecords.fetch_add(count, std::memory_order_relaxed);
+        if (std::numeric_limits<std::uint64_t>::max() - _pendingDropNotice < count) {
+            _pendingDropNotice = std::numeric_limits<std::uint64_t>::max();
+        } else {
+            _pendingDropNotice += count;
+        }
+    }
+
+    void RestoreDropNotice(std::uint64_t count) noexcept {
+        std::lock_guard<std::mutex> queueLock(_queueMutex);
+        if (std::numeric_limits<std::uint64_t>::max() - _pendingDropNotice < count) {
+            _pendingDropNotice = std::numeric_limits<std::uint64_t>::max();
+        } else {
+            _pendingDropNotice += count;
+        }
     }
 
     StorageStatus RemoveGeneration(std::size_t generation) noexcept {
@@ -511,8 +700,8 @@ private:
     StorageStatus PruneForAppend(std::size_t bytes) noexcept {
         while (_retainedBytes + bytes > TotalCapacity()) {
             bool removed = false;
-            // Historical generations are always removed before the active generation. Because TotalCapacity is
-            // required to be >= FileCapacity, a record that fits the active file cannot require deleting it here.
+            // Historical generations are removed before the active generation. Because TotalCapacity is required
+            // to be >= FileCapacity, a record that fits the active file cannot require deleting generation zero here.
             for (std::size_t remaining = FileCount(); remaining > 1U; --remaining) {
                 const std::size_t generation = remaining - 1U;
                 if (!_exists[generation]) continue;
@@ -526,6 +715,28 @@ private:
         return StorageStatus::Success;
     }
 
+    StorageStatus AppendDurable(const std::uint8_t* data, std::size_t size) noexcept {
+        if (data == nullptr || size == 0U || size > FileCapacity() || size > TotalCapacity()) {
+            return StorageStatus::InvalidArgument;
+        }
+        if (_exists[0U] && _sizes[0U] + size > FileCapacity()) {
+            const auto rotated = Rotate();
+            if (rotated != StorageStatus::Success) return rotated;
+        }
+        const auto pruned = PruneForAppend(size);
+        if (pruned != StorageStatus::Success) return pruned;
+
+        char path[StorageEntry::MaximumPathLength]{};
+        if (!BuildPath(0U, path, sizeof(path))) return StorageStatus::InvalidArgument;
+        const auto status = _storage->Write(path, data, size, WriteMode::Append);
+        if (status != StorageStatus::Success) return status;
+
+        _exists[0U] = true;
+        _sizes[0U] += size;
+        _retainedBytes += size;
+        return StorageStatus::Success;
+    }
+
     StorageStatus SetStatus(StorageStatus status) const noexcept {
         _lastStatus.store(status, std::memory_order_relaxed);
         return status;
@@ -535,15 +746,30 @@ private:
     Logging::RollingLogPolicy _policy{};
     std::array<char, StorageEntry::MaximumPathLength> _directory{};
     std::array<char, StorageEntry::MaximumPathLength> _fileName{};
+    std::array<QueuedRecord, QueueCapacity> _queue{};
+    std::array<std::uint8_t, MaximumRecordBytes> _encodeBuffer{};
+    std::array<std::uint8_t, MaximumRecordBytes> _flushBuffer{};
     std::array<bool, MaximumFiles> _exists{};
     std::array<std::uint64_t, MaximumFiles> _sizes{};
-    std::array<std::uint8_t, MaximumRecordBytes> _recordBuffer{};
     std::atomic<Logging::LogLevelMask> _levelMask{Logging::AllLogLevels};
+    Logging::LogBufferOverflowPolicy _overflowPolicy{Logging::LogBufferOverflowPolicy::DropOldest};
     std::atomic<bool> _initialized{false};
+    mutable std::atomic<bool> _maintenance{false};
     mutable std::atomic<StorageStatus> _lastStatus{StorageStatus::NotInitialized};
-    mutable std::mutex _mutex;
+    mutable std::mutex _queueMutex;
+    mutable std::mutex _storageMutex;
+    mutable std::mutex _flushMutex;
+    std::size_t _queueHead{0U};
+    std::size_t _queueTail{0U};
+    std::size_t _queueSize{0U};
+    std::uint64_t _pendingDropNotice{0U};
     std::uint64_t _retainedBytes{0U};
-    Logging::LogSinkStatistics _statistics{};
+    std::atomic<std::uint64_t> _acceptedRecords{0U};
+    std::atomic<std::uint64_t> _filteredRecords{0U};
+    std::atomic<std::uint64_t> _droppedRecords{0U};
+    std::atomic<std::uint64_t> _writeFailures{0U};
+    std::atomic<std::uint64_t> _bytesWritten{0U};
+    std::atomic<std::size_t> _queueHighWaterMark{0U};
 };
 
 } // namespace ESPressio::Persistence
