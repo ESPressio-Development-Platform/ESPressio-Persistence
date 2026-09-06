@@ -49,6 +49,10 @@ class PersistentLogSink final : public Logging::ILogSink {
     static_assert(MaximumFiles > 0U, "Persistent log generation capacity must be non-zero.");
     static_assert(QueueCapacity > 0U, "Persistent log queue capacity must be non-zero.");
 
+    static constexpr std::size_t MaximumDropNoticeBytes =
+        (sizeof("[PERSISTENT_LOG] dropped_entries=") - 1U) +
+        std::numeric_limits<std::uint64_t>::digits10 + 2U;
+
 public:
     using ReadCallback = bool (*)(const std::uint8_t* data, std::size_t size, void* context);
 
@@ -139,12 +143,13 @@ public:
     }
 
     /// <summary>
-    /// Stops queue admission and waits for an in-flight flush call to leave storage code. Queued records remain owned
-    /// by the Sink and can be flushed if the same Sink instance is initialized again.
+    /// Stops queue admission and waits for in-flight queue admission and flush/maintenance storage work to complete.
+    /// Queued records remain owned by the Sink and can be flushed if the same Sink instance is initialized again.
     /// </summary>
     void Shutdown() noexcept {
         _initialized.store(false, std::memory_order_release);
         std::lock_guard<std::mutex> flushLock(_flushMutex);
+        std::lock_guard<std::mutex> queueLock(_queueMutex);
     }
 
     bool IsInitialized() const noexcept { return _initialized.load(std::memory_order_acquire); }
@@ -551,6 +556,7 @@ private:
             _policy.FileCapacity.CapacityMode != Logging::LogByteCapacity::Mode::Bounded ||
             _policy.FileCount.CapacityMode != Logging::LogCountCapacity::Mode::Bounded ||
             _policy.FileCount.Count == 0U || _policy.FileCount.Count > MaximumFiles ||
+            _policy.FileCapacity.Bytes < MaximumDropNoticeBytes ||
             _policy.TotalCapacity.Bytes < _policy.FileCapacity.Bytes ||
             _overflowPolicy == Logging::LogBufferOverflowPolicy::Block) return false;
         char path[StorageEntry::MaximumPathLength]{};
