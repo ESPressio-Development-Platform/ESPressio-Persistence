@@ -43,7 +43,9 @@ endif()
 if(ESPRESSIO_TIMING_SOURCE_DIR)
     target_include_directories(
         ESPressioPersistence
-        INTERFACE ${ESPRESSIO_TIMING_SOURCE_DIR}/src
+        INTERFACE
+            ${ESPRESSIO_TIMING_SOURCE_DIR}/src
+            ${ESPRESSIO_TIMING_SOURCE_DIR}/tests/stubs
     )
 endif()
 if(ESPRESSIO_UNITS_SOURCE_DIR)
