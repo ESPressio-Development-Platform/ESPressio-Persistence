@@ -19,6 +19,12 @@ set(
     CACHE PATH
     "Path to the ESPressio-Timing working copy used by optional Logging integration tests"
 )
+set(
+    ESPRESSIO_UNITS_SOURCE_DIR
+    ""
+    CACHE PATH
+    "Path to the ESPressio-Units working copy required transitively by Timing in optional Logging integration tests"
+)
 
 add_library(ESPressioPersistence INTERFACE)
 target_include_directories(ESPressioPersistence INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -38,6 +44,12 @@ if(ESPRESSIO_TIMING_SOURCE_DIR)
     target_include_directories(
         ESPressioPersistence
         INTERFACE ${ESPRESSIO_TIMING_SOURCE_DIR}/src
+    )
+endif()
+if(ESPRESSIO_UNITS_SOURCE_DIR)
+    target_include_directories(
+        ESPressioPersistence
+        INTERFACE ${ESPRESSIO_UNITS_SOURCE_DIR}/src
     )
 endif()
 target_compile_features(ESPressioPersistence INTERFACE cxx_std_17)
