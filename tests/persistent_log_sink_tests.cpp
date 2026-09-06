@@ -25,8 +25,9 @@ Logging::RollingLogPolicy Policy(std::size_t total, std::size_t file, std::size_
     };
 }
 
+template<std::size_t MaximumRecordBytes, std::size_t MaximumFiles>
 void Submit(
-    Persistence::PersistentLogSink<256U, 4U>& sink,
+    Persistence::PersistentLogSink<MaximumRecordBytes, MaximumFiles>& sink,
     Logging::LogLevel level,
     std::string_view message,
     Logging::LogFieldView fields = {}
