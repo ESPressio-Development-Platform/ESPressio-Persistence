@@ -31,6 +31,11 @@ jobs:
           repository: ESPressio-Development-Platform/ESPressio-Logging
           ref: structural_realignment
           path: project/ESPressio-Logging
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Task
+          ref: structural_realignment
+          path: project/ESPressio-Task
       - name: Configure
         run: >-
           cmake -S project/ESPressio-Persistence
@@ -39,6 +44,7 @@ jobs:
           -DESPRESSIO_TIMING_SOURCE_DIR="$PWD/project/ESPressio-Timing"
           -DESPRESSIO_UNITS_SOURCE_DIR="$PWD/project/ESPressio-Units"
           -DESPRESSIO_LOGGING_SOURCE_DIR="$PWD/project/ESPressio-Logging"
+          -DESPRESSIO_TASK_SOURCE_DIR="$PWD/project/ESPressio-Task"
       - name: Build
         run: cmake --build project/ESPressio-Persistence/build --parallel
       - name: Test
@@ -117,6 +123,26 @@ jobs:
           repository: ESPressio-Development-Platform/ESPressio-System
           ref: structural_realignment
           path: project/ESPressio-System
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Task
+          ref: structural_realignment
+          path: project/ESPressio-Task
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Logging
+          ref: structural_realignment
+          path: project/ESPressio-Logging
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Timing
+          ref: structural_realignment
+          path: project/ESPressio-Timing
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Units
+          ref: structural_realignment
+          path: project/ESPressio-Units
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -139,10 +165,15 @@ jobs:
               ../ESPressio-Security
               ../ESPressio-Observable
               ../ESPressio-System
+              ../ESPressio-Task
+              ../ESPressio-Logging
+              ../ESPressio-Timing
+              ../ESPressio-Units
           EOF
           cat > project/compile/src/main.cpp <<'EOF'
           #include <Arduino.h>
           #include <ESPressio_Persistence.hpp>
+          #include <ESPressio_Persistence_Logging.hpp>
           #include <ESPressio_Persistence_Serializable.hpp>
           #include <ESPressio_Persistence_Serializable_Security.hpp>
           #include <ESPressio_Security.hpp>
@@ -165,6 +196,7 @@ jobs:
           Security::AeadCipherRegistry ciphers;
           Security::StaticKeyProvider keys;
           Security::RandomSource randomSource;
+          PersistentLogWorkerConfiguration persistentWorkerConfiguration;
 
           void setup() {
               uint8_t key[32]{};
@@ -179,8 +211,9 @@ jobs:
               (void)LoadSerializable(files, "/value.bin", value, protection);
               (void)SaveSerializable(values, "value", value, protection);
               (void)LoadSerializable(values, "value", value, protection);
+              (void)persistentWorkerConfiguration.FlushQuantum;
           }
           void loop() {}
           EOF
-      - name: Compile ESP32 protected Serializable surface
+      - name: Compile ESP32 persistence surfaces
         run: pio run -d project/compile
