@@ -22,10 +22,6 @@
         {
             "name": "ESPressio-System",
             "version": "https://github.com/ESPressio-Development-Platform/ESPressio-System.git#structural_realignment"
-        },
-        {
-            "name": "ESPressio-Task",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Task.git#structural_realignment"
         }
     ]
 }
