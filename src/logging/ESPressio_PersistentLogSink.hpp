@@ -459,29 +459,29 @@ public:
     }
 
 private:
-        /**
-     * ESPressio Memory Audit
-     * Members:
-     * - Bytes (std::array<std::uint8_t, MaximumRecordBytes>): MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
-     * - Size (std::size_t): 4 bytes [0 bytes dynamic allocation]
-     * Total Memory: 4 bytes known/aligned storage + MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
-     * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
-     * Confidence: low; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
-     * End ESPressio Memory Audit
-     */
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - Bytes (std::array<std::uint8_t, MaximumRecordBytes>): MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
+ * - Size (std::size_t): 4 bytes [0 bytes dynamic allocation]
+ * Total Memory: 4 bytes known/aligned storage + MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * Confidence: low; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
+ * End ESPressio Memory Audit
+ */
 struct QueuedRecord final {
         std::array<std::uint8_t, MaximumRecordBytes> Bytes{};
         std::size_t Size{0U};
     };
 
-        /**
-     * ESPressio Memory Audit
-     * Members:
-     * - _flag (std::atomic<bool>&): 4 bytes [0 bytes dynamic allocation]
-     * Total Memory: 4 bytes [0 bytes dynamic allocation]
-     * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
-     * End ESPressio Memory Audit
-     */
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - _flag (std::atomic<bool>&): 4 bytes [0 bytes dynamic allocation]
+ * Total Memory: 4 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 class MaintenanceGuard final {
     public:
         explicit MaintenanceGuard(std::atomic<bool>& flag) noexcept : _flag(flag) {}
@@ -492,15 +492,15 @@ class MaintenanceGuard final {
         std::atomic<bool>& _flag;
     };
 
-        /**
-     * ESPressio Memory Audit
-     * Members:
-     * - _buffer (std::array<std::uint8_t, MaximumRecordBytes>&): 4 bytes [0 bytes dynamic allocation]
-     * - _size (std::size_t): 4 bytes [0 bytes dynamic allocation]
-     * Total Memory: 8 bytes [0 bytes dynamic allocation]
-     * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
-     * End ESPressio Memory Audit
-     */
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - _buffer (std::array<std::uint8_t, MaximumRecordBytes>&): 4 bytes [0 bytes dynamic allocation]
+ * - _size (std::size_t): 4 bytes [0 bytes dynamic allocation]
+ * Total Memory: 8 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 class Writer final {
     public:
         explicit Writer(std::array<std::uint8_t, MaximumRecordBytes>& buffer) noexcept : _buffer(buffer) {}
