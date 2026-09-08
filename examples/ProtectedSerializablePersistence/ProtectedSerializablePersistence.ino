@@ -7,6 +7,15 @@
 using namespace ESPressio;
 using namespace ESPressio::Persistence;
 
+/**
+ * ESPressio Memory Audit
+ * Inherited Memory Total: 1 bytes [0 bytes dynamic allocation]
+ * Members:
+ * - _channel (uint8_t): 1 bytes [0 bytes dynamic allocation]
+ * Total Memory: 2 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 class DeviceConfiguration final : public Serializable::Serializable<DeviceConfiguration> {
     ESPRESSIO_SERIALIZABLE_TYPE(DeviceConfiguration)
     ESPRESSIO_SERIALIZABLE_SCHEMA_VERSION(1)

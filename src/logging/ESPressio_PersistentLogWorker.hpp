@@ -12,6 +12,13 @@
 namespace ESPressio::Persistence {
 
 /// <summary>Controls how queued sink-owned records are treated when the persistent logging worker is stopped.</summary>
+/**
+ * ESPressio Memory Audit
+ * Underlying storage: 1 bytes
+ * Total Memory: 1 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 enum class PersistentLogWorkerStopMode : std::uint8_t {
     /// <summary>Stop storage execution immediately; queued records remain owned by the sink.</summary>
     PreserveQueued,
@@ -20,6 +27,16 @@ enum class PersistentLogWorkerStopMode : std::uint8_t {
 };
 
 /// <summary>Configuration for the dedicated persistent-log storage task.</summary>
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - TaskConfiguration (Task::TaskConfiguration): 24 bytes [0 bytes dynamic allocation]
+ * - FlushQuantum (std::size_t): 4 bytes [0 bytes dynamic allocation]
+ * - ShutdownDrainMaximumItems (std::size_t): 4 bytes [0 bytes dynamic allocation]
+ * Total Memory: 32 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 struct PersistentLogWorkerConfiguration final {
     Task::TaskConfiguration TaskConfiguration{};
     /// <summary>Maximum sink work items written by one worker wake.</summary>
@@ -41,6 +58,20 @@ struct PersistentLogWorkerConfiguration final {
 };
 
 /// <summary>Snapshot of persistent-log worker scheduling/storage activity.</summary>
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - WorkSignals (std::uint32_t): 4 bytes [0 bytes dynamic allocation]
+ * - WakeTokensQueued (std::uint32_t): 4 bytes [0 bytes dynamic allocation]
+ * - WakeSignalsCoalesced (std::uint32_t): 4 bytes [0 bytes dynamic allocation]
+ * - FlushPasses (std::uint32_t): 4 bytes [0 bytes dynamic allocation]
+ * - FlushFailures (std::uint32_t): 4 bytes [0 bytes dynamic allocation]
+ * - LastFlushStatus (StorageStatus): 1 bytes [0 bytes dynamic allocation]
+ * - TaskStatistics (Task::TaskExecutionStatistics): 40 bytes [0 bytes dynamic allocation]
+ * Total Memory: 64 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 struct PersistentLogWorkerStatistics final {
     std::uint32_t WorkSignals{0U};
     std::uint32_t WakeTokensQueued{0U};
@@ -71,6 +102,26 @@ struct PersistentLogWorkerStatistics final {
 /// Register this worker facade with Logger rather than registering the wrapped sink directly. Direct calls to the sink's
 /// Accept() bypass worker signalling by design.
 /// </remarks>
+/**
+ * ESPressio Memory Audit
+ * Inherited Memory Total: 8 bytes [0 bytes dynamic allocation]
+ * Members:
+ * - _sink (TPersistentSink*): 4 bytes [0 bytes dynamic allocation]
+ * - _configuration (PersistentLogWorkerConfiguration): 32 bytes [0 bytes dynamic allocation]
+ * - _executor (Task::TaskExecutor<std::uint8_t>): 160 bytes [_handler: Name: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _handler: LastId: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _queue: owned object: 4 bytes; _startGate: owned object: 4 bytes; _lifecycleMutex: _owned: owned object: 4 bytes; _lifecycleMutex: _fallback: _mutex: native synchronization state may allocate platform resources lazily]
+ * - _running (std::atomic<bool>): 1 bytes [0 bytes dynamic allocation]
+ * - _wakeOutstanding (std::atomic<bool>): 1 bytes [0 bytes dynamic allocation]
+ * - _workSignals (std::atomic<std::uint32_t>): 4 bytes [0 bytes dynamic allocation]
+ * - _wakeTokensQueued (std::atomic<std::uint32_t>): 4 bytes [0 bytes dynamic allocation]
+ * - _wakeSignalsCoalesced (std::atomic<std::uint32_t>): 4 bytes [0 bytes dynamic allocation]
+ * - _flushPasses (std::atomic<std::uint32_t>): 4 bytes [0 bytes dynamic allocation]
+ * - _flushFailures (std::atomic<std::uint32_t>): 4 bytes [0 bytes dynamic allocation]
+ * - _lastFlushStatus (std::atomic<StorageStatus>): 1 bytes [0 bytes dynamic allocation]
+ * Total Memory: 232 bytes [_executor: _handler: Name: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _executor: _handler: LastId: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _executor: _queue: owned object: 4 bytes; _executor: _startGate: owned object: 4 bytes; _executor: _lifecycleMutex: _owned: owned object: 4 bytes; _executor: _lifecycleMutex: _fallback: _mutex: native synchronization state may allocate platform resources lazily]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
+ * End ESPressio Memory Audit
+ */
 template<typename TPersistentSink>
 class PersistentLogWorker final
     : public Logging::ILogSink,

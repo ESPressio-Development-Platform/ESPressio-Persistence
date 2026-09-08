@@ -12,6 +12,13 @@
 
 namespace ESPressio::Persistence {
 
+/**
+ * ESPressio Memory Audit
+ * Underlying storage: 1 bytes
+ * Total Memory: 1 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 enum class SerializablePersistenceStatus : uint8_t {
     Success = 0,
     InvalidArgument,
@@ -35,6 +42,17 @@ inline const char* SerializablePersistenceStatusName(SerializablePersistenceStat
     }
 }
 
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - MaximumPayloadBytes (std::size_t): 4 bytes [0 bytes dynamic allocation]
+ * - PreferAtomicFileReplace (bool): 1 bytes [0 bytes dynamic allocation]
+ * - DecodeLimits (Serializable::BinaryArchiveDecodeLimits): 24 bytes [0 bytes dynamic allocation]
+ * - Deserialization (Serializable::DeserializationOptions): 8 bytes [0 bytes dynamic allocation]
+ * Total Memory: 40 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 struct SerializablePersistenceOptions {
     std::size_t MaximumPayloadBytes = 64u * 1024u;
     bool PreferAtomicFileReplace = true;
@@ -42,6 +60,18 @@ struct SerializablePersistenceOptions {
     Serializable::DeserializationOptions Deserialization{};
 };
 
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - Status (SerializablePersistenceStatus): 1 bytes [0 bytes dynamic allocation]
+ * - Storage (StorageStatus): 1 bytes [0 bytes dynamic allocation]
+ * - PayloadBytes (std::size_t): 4 bytes [0 bytes dynamic allocation]
+ * - Deserialization (Serializable::DeserializationResult): 12 bytes [_issues: Capacity * (52 bytes) element storage; _issues: N live elements each: Path: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _issues: N live elements each: Message: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
+ * Total Memory: 20 bytes [Deserialization: _issues: Capacity * (52 bytes) element storage; Deserialization: _issues: N live elements each: Path: Capacity + 1 bytes when capacity exceeds 15-byte SSO; Deserialization: _issues: N live elements each: Message: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
+ * End ESPressio Memory Audit
+ */
 struct SerializablePersistenceResult {
     SerializablePersistenceStatus Status = SerializablePersistenceStatus::Success;
     StorageStatus Storage = StorageStatus::Success;

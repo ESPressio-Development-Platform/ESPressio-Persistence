@@ -14,6 +14,13 @@ namespace ESPressio::Persistence {
 /// callers after a record has been copied into bounded sink-owned RAM. Its only responsibility is to wake or enqueue a
 /// separate storage execution context.
 /// </remarks>
+/**
+ * ESPressio Memory Audit
+ * Members: none; polymorphic/virtual-base object metadata is included in the total.
+ * Total Memory: 4 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 class IPersistentLogWorkSignal {
 public:
     virtual ~IPersistentLogWorkSignal() = default;
@@ -27,6 +34,13 @@ public:
 /// A target remains the sole owner of log records and backpressure/drop accounting. Workers schedule bounded calls to
 /// Flush(); they do not introduce a second log-record queue.
 /// </remarks>
+/**
+ * ESPressio Memory Audit
+ * Members: none; polymorphic/virtual-base object metadata is included in the total.
+ * Total Memory: 4 bytes [0 bytes dynamic allocation]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * End ESPressio Memory Audit
+ */
 class IPersistentLogWorkTarget {
 public:
     virtual ~IPersistentLogWorkTarget() = default;

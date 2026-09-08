@@ -5,6 +5,17 @@
 using namespace ESPressio;
 using namespace ESPressio::Persistence;
 
+/**
+ * ESPressio Memory Audit
+ * Inherited Memory Total: 1 bytes [0 bytes dynamic allocation]
+ * Members:
+ * - _deviceName (std::string): 24 bytes [Capacity + 1 bytes when capacity exceeds 15-byte SSO]
+ * - _enabled (bool): 1 bytes [0 bytes dynamic allocation]
+ * Total Memory: 32 bytes [_deviceName: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
+ * End ESPressio Memory Audit
+ */
 class DeviceConfiguration final
     : public Serializable::Serializable<DeviceConfiguration> {
     ESPRESSIO_SERIALIZABLE_TYPE(DeviceConfiguration)

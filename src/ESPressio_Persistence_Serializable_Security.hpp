@@ -9,6 +9,17 @@
 
 namespace ESPressio::Persistence {
 
+/**
+ * ESPressio Memory Audit
+ * Members:
+ * - Storage (StorageStatus): 1 bytes [0 bytes dynamic allocation]
+ * - PayloadBytes (std::size_t): 4 bytes [0 bytes dynamic allocation]
+ * - Serialization (Serializable::ProtectedSerializationResult): 52 bytes [SecurityResult: Message: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; Deserialization: _issues: Capacity * (52 bytes) element storage; Deserialization: _issues: N live elements each: Path: Capacity + 1 bytes when capacity exceeds 15-byte SSO; Deserialization: _issues: N live elements each: Message: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
+ * Total Memory: 60 bytes [Serialization: SecurityResult: Message: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; Serialization: Deserialization: _issues: Capacity * (52 bytes) element storage; Serialization: Deserialization: _issues: N live elements each: Path: Capacity + 1 bytes when capacity exceeds 15-byte SSO; Serialization: Deserialization: _issues: N live elements each: Message: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
+ * End ESPressio Memory Audit
+ */
 struct ProtectedSerializablePersistenceResult {
     StorageStatus Storage = StorageStatus::Success;
     std::size_t PayloadBytes = 0;

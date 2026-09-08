@@ -9,6 +9,17 @@ namespace ESPressio::Persistence {
 
 /// <summary>In-memory <c>IKeyValueStorage</c> implementation intended for volatile storage, host use, and tests.</summary>
 /// <remarks>Owned keys, values, and associative-container nodes use ESPressio System ExternalPreferred storage so the backend does not compete with capability-constrained internal RAM on PSRAM-capable targets.</remarks>
+/**
+ * ESPressio Memory Audit
+ * Inherited Memory Total: 4 bytes [0 bytes dynamic allocation]
+ * Members:
+ * - _ready (bool): 1 bytes [0 bytes dynamic allocation]
+ * - _values (ValueStorage): 28 bytes [N * (16 bytes red-black-tree node linkage + 40 bytes value); key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; key/value: Capacity * (1 bytes) element storage]
+ * Total Memory: 36 bytes [_values: N * (16 bytes red-black-tree node linkage + 40 bytes value); _values: key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _values: key/value: Capacity * (1 bytes) element storage]
+ * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
+ * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
+ * End ESPressio Memory Audit
+ */
 class MemoryKeyValueStorage final : public IKeyValueStorage {
 private:
     static constexpr auto ExternalPreferred =
