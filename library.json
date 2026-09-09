@@ -13,11 +13,11 @@
     "dependencies": [
         {
             "name": "ESPressio-Serializable",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Serializable.git#structural_realignment"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Serializable.git#primitives_redesign"
         },
         {
             "name": "ESPressio-Security",
-            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Security.git#structural_realignment"
+            "version": "https://github.com/ESPressio-Development-Platform/ESPressio-Security.git#primitives_redesign"
         },
         {
             "name": "ESPressio-System",
