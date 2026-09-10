@@ -9,17 +9,7 @@
 using namespace ESPressio;
 using namespace ESPressio::Persistence;
 
-/**
- * ESPressio Memory Audit
- * Inherited Memory Total: 1 bytes [0 bytes dynamic allocation]
- * Members:
- * - _name (std::string): 24 bytes [Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * - _enabled (bool): 1 bytes [0 bytes dynamic allocation]
- * Total Memory: 32 bytes [_name: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
- * End ESPressio Memory Audit
- */
+
 class DeviceConfiguration final
     : public Serializable::Serializable<DeviceConfiguration> {
     ESPRESSIO_SERIALIZABLE_TYPE(DeviceConfiguration)
@@ -171,16 +161,7 @@ static void TestInvalidLocatorAndInitialization() {
 }
 
 static void TestOrdinaryReplaceFallback() {
-/**
- * ESPressio Memory Audit
- * Inherited Memory Total: 4 bytes [0 bytes dynamic allocation]
- * Members:
- * - _inner (MemoryFileStorage): 64 bytes [_files: N * (16 bytes red-black-tree node linkage + 40 bytes value); _files: key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _files: key/value: Capacity * (1 bytes) element storage; _directories: N * (16 bytes red-black-tree node linkage + 24 bytes value); _directories: element: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Total Memory: 68 bytes [_inner: _files: N * (16 bytes red-black-tree node linkage + 40 bytes value); _inner: _files: key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _inner: _files: key/value: Capacity * (1 bytes) element storage; _inner: _directories: N * (16 bytes red-black-tree node linkage + 24 bytes value); _inner: _directories: element: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
- * End ESPressio Memory Audit
- */
+
 class NonRenamingStorage final : public IFileStorage {
     public:
         StorageStatus Initialize() override { return _inner.Initialize(); }

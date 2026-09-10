@@ -40,43 +40,7 @@ namespace ESPressio::Persistence {
 /// The injected IFileStorage is non-owning and should not be externally mutated at the Sink's managed paths while
 /// the Sink is initialized.
 /// </remarks>
-/**
- * ESPressio Memory Audit
- * Inherited Memory Total: 4 bytes [0 bytes dynamic allocation]
- * Members:
- * - _storage (IFileStorage*): 4 bytes [0 bytes dynamic allocation]
- * - _policy (Logging::RollingLogPolicy): 24 bytes [0 bytes dynamic allocation]
- * - _directory (std::array<char, StorageEntry::MaximumPathLength>): 256 bytes [0 bytes dynamic allocation]
- * - _fileName (std::array<char, StorageEntry::MaximumPathLength>): 256 bytes [0 bytes dynamic allocation]
- * - _queue (std::array<QueuedRecord, QueueCapacity>): QueueCapacity * (4 bytes known/aligned storage + MaximumRecordBytes * (1 bytes)) [0 bytes dynamic allocation]
- * - _encodeBuffer (std::array<std::uint8_t, MaximumRecordBytes>): MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
- * - _flushBuffer (std::array<std::uint8_t, MaximumRecordBytes>): MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
- * - _exists (std::array<bool, MaximumFiles>): MaximumFiles * (1 bytes) [0 bytes dynamic allocation]
- * - _sizes (std::array<std::uint64_t, MaximumFiles>): MaximumFiles * (8 bytes) [0 bytes dynamic allocation]
- * - _levelMask (std::atomic<Logging::LogLevelMask>): 1 bytes [0 bytes dynamic allocation]
- * - _overflowPolicy (Logging::LogBufferOverflowPolicy): 1 bytes [0 bytes dynamic allocation]
- * - _initialized (std::atomic<bool>): 1 bytes [0 bytes dynamic allocation]
- * - _maintenance (std::atomic<bool>): 1 bytes [0 bytes dynamic allocation]
- * - _lastStatus (std::atomic<StorageStatus>): 1 bytes [0 bytes dynamic allocation]
- * - _queueMutex (std::mutex): 4 bytes [native synchronization state may allocate platform resources lazily]
- * - _storageMutex (std::mutex): 4 bytes [native synchronization state may allocate platform resources lazily]
- * - _flushMutex (std::mutex): 4 bytes [native synchronization state may allocate platform resources lazily]
- * - _queueHead (std::size_t): 4 bytes [0 bytes dynamic allocation]
- * - _queueTail (std::size_t): 4 bytes [0 bytes dynamic allocation]
- * - _queueSize (std::size_t): 4 bytes [0 bytes dynamic allocation]
- * - _pendingDropNotice (std::uint64_t): 8 bytes [0 bytes dynamic allocation]
- * - _retainedBytes (std::uint64_t): 8 bytes [0 bytes dynamic allocation]
- * - _acceptedRecords (std::atomic<std::uint64_t>): 8 bytes [0 bytes dynamic allocation]
- * - _filteredRecords (std::atomic<std::uint64_t>): 8 bytes [0 bytes dynamic allocation]
- * - _droppedRecords (std::atomic<std::uint64_t>): 8 bytes [0 bytes dynamic allocation]
- * - _writeFailures (std::atomic<std::uint64_t>): 8 bytes [0 bytes dynamic allocation]
- * - _bytesWritten (std::atomic<std::uint64_t>): 8 bytes [0 bytes dynamic allocation]
- * - _queueHighWaterMark (std::atomic<std::size_t>): 4 bytes [0 bytes dynamic allocation]
- * Total Memory: 636 bytes known/aligned storage + QueueCapacity * (4 bytes known/aligned storage + MaximumRecordBytes * (1 bytes)) + MaximumRecordBytes * (1 bytes) + MaximumRecordBytes * (1 bytes) + MaximumFiles * (1 bytes) + MaximumFiles * (8 bytes) [_queueMutex: native synchronization state may allocate platform resources lazily; _storageMutex: native synchronization state may allocate platform resources lazily; _flushMutex: native synchronization state may allocate platform resources lazily]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * Confidence: low; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
- * End ESPressio Memory Audit
- */
+
 template<
     std::size_t MaximumRecordBytes = 1024U,
     std::size_t MaximumFiles = 16U,
@@ -459,29 +423,13 @@ public:
     }
 
 private:
-/**
- * ESPressio Memory Audit
- * Members:
- * - Bytes (std::array<std::uint8_t, MaximumRecordBytes>): MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
- * - Size (std::size_t): 4 bytes [0 bytes dynamic allocation]
- * Total Memory: 4 bytes known/aligned storage + MaximumRecordBytes * (1 bytes) [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * Confidence: low; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
- * End ESPressio Memory Audit
- */
+
 struct QueuedRecord final {
         std::array<std::uint8_t, MaximumRecordBytes> Bytes{};
         std::size_t Size{0U};
     };
 
-/**
- * ESPressio Memory Audit
- * Members:
- * - _flag (std::atomic<bool>&): 4 bytes [0 bytes dynamic allocation]
- * Total Memory: 4 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 class MaintenanceGuard final {
     public:
         explicit MaintenanceGuard(std::atomic<bool>& flag) noexcept : _flag(flag) {}
@@ -492,15 +440,7 @@ class MaintenanceGuard final {
         std::atomic<bool>& _flag;
     };
 
-/**
- * ESPressio Memory Audit
- * Members:
- * - _buffer (std::array<std::uint8_t, MaximumRecordBytes>&): 4 bytes [0 bytes dynamic allocation]
- * - _size (std::size_t): 4 bytes [0 bytes dynamic allocation]
- * Total Memory: 8 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 class Writer final {
     public:
         explicit Writer(std::array<std::uint8_t, MaximumRecordBytes>& buffer) noexcept : _buffer(buffer) {}

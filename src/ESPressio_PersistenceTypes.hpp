@@ -6,13 +6,7 @@
 namespace ESPressio::Persistence {
 
 /// <summary>Result status returned by persistence backend operations.</summary>
-/**
- * ESPressio Memory Audit
- * Underlying storage: 1 bytes
- * Total Memory: 1 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 enum class StorageStatus : uint8_t {
     Success = 0,
     NotInitialized,
@@ -31,26 +25,14 @@ enum class StorageStatus : uint8_t {
 };
 
 /// <summary>Controls whether file writes replace existing content or append to it.</summary>
-/**
- * ESPressio Memory Audit
- * Underlying storage: 1 bytes
- * Total Memory: 1 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 enum class WriteMode : uint8_t {
     Replace = 0,
     Append
 };
 
 /// <summary>Bit flags describing optional features exposed by a storage backend.</summary>
-/**
- * ESPressio Memory Audit
- * Underlying storage: 4 bytes
- * Total Memory: 4 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 enum class StorageCapability : uint32_t {
     None              = 0,
     Hierarchical      = 1u << 0,
@@ -82,17 +64,7 @@ constexpr bool HasCapability(StorageCapability value, StorageCapability capabili
 }
 
 /// <summary>Capacity statistics reported by a storage backend.</summary>
-/**
- * ESPressio Memory Audit
- * Members:
- * - totalBytes (uint64_t): 8 bytes [0 bytes dynamic allocation]
- * - usedBytes (uint64_t): 8 bytes [0 bytes dynamic allocation]
- * - freeBytes (uint64_t): 8 bytes [0 bytes dynamic allocation]
- * - capacityKnown (bool): 1 bytes [0 bytes dynamic allocation]
- * Total Memory: 28 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 struct StorageStatistics {
     uint64_t totalBytes = 0;
     uint64_t usedBytes = 0;
@@ -101,16 +73,7 @@ struct StorageStatistics {
 };
 
 /// <summary>Metadata describing one file or directory returned by a storage backend.</summary>
-/**
- * ESPressio Memory Audit
- * Members:
- * - path (char[MaximumPathLength]): 256 bytes [0 bytes dynamic allocation]
- * - size (uint64_t): 8 bytes [0 bytes dynamic allocation]
- * - isDirectory (bool): 1 bytes [0 bytes dynamic allocation]
- * Total Memory: 268 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 struct StorageEntry {
     /// <summary>Maximum number of bytes reserved for an entry path, including terminator storage.</summary>
     static constexpr std::size_t MaximumPathLength = 256;

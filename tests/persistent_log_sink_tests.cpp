@@ -49,17 +49,7 @@ bool Collect(const std::uint8_t* data, std::size_t size, void* context) {
     return true;
 }
 
-/**
- * ESPressio Memory Audit
- * Inherited Memory Total: 4 bytes [0 bytes dynamic allocation]
- * Members:
- * - Writes (std::size_t): 4 bytes [0 bytes dynamic allocation]
- * - _inner (Persistence::MemoryFileStorage): 64 bytes [_files: N * (16 bytes red-black-tree node linkage + 40 bytes value); _files: key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _files: key/value: Capacity * (1 bytes) element storage; _directories: N * (16 bytes red-black-tree node linkage + 24 bytes value); _directories: element: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Total Memory: 72 bytes [_inner: _files: N * (16 bytes red-black-tree node linkage + 40 bytes value); _inner: _files: key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _inner: _files: key/value: Capacity * (1 bytes) element storage; _inner: _directories: N * (16 bytes red-black-tree node linkage + 24 bytes value); _inner: _directories: element: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
- * End ESPressio Memory Audit
- */
+
 class CountingFileStorage final : public Persistence::IFileStorage {
 public:
     Persistence::StorageStatus Initialize() override { return _inner.Initialize(); }
@@ -240,17 +230,7 @@ void TestVisitAllowsConcurrentQueueAdmission() {
     Submit(sink, Logging::LogLevel::Info, "persisted-before-visit");
     assert(sink.FlushOne() == Persistence::StorageStatus::Success);
 
-/**
- * ESPressio Memory Audit
- * Members:
- * - Sink (Persistence::PersistentLogSink<192U, 2U, 4U>*): 4 bytes [0 bytes dynamic allocation]
- * - Text (std::string): 24 bytes [Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * - Submitted (bool): 1 bytes [0 bytes dynamic allocation]
- * Total Memory: 32 bytes [Text: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
- * End ESPressio Memory Audit
- */
+
 struct VisitContext {
         Persistence::PersistentLogSink<192U, 2U, 4U>* Sink;
         std::string Text;

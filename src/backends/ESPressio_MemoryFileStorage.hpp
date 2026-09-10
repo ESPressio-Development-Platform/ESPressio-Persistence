@@ -12,18 +12,7 @@ namespace ESPressio::Persistence {
 
 /// <summary>In-memory hierarchical <c>IFileStorage</c> implementation intended for volatile storage, host use, and tests.</summary>
 /// <remarks>Owned paths, file payloads, and associative-container nodes use ESPressio System ExternalPreferred storage. Directory relationship checks operate on borrowed string views and do not allocate prefix or substring temporaries.</remarks>
-/**
- * ESPressio Memory Audit
- * Inherited Memory Total: 4 bytes [0 bytes dynamic allocation]
- * Members:
- * - _ready (bool): 1 bytes [0 bytes dynamic allocation]
- * - _files (FileStorage): 28 bytes [N * (16 bytes red-black-tree node linkage + 40 bytes value); key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; key/value: Capacity * (1 bytes) element storage]
- * - _directories (DirectoryStorage): 28 bytes [N * (16 bytes red-black-tree node linkage + 24 bytes value); element: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Total Memory: 64 bytes [_files: N * (16 bytes red-black-tree node linkage + 40 bytes value); _files: key/value: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO; _files: key/value: Capacity * (1 bytes) element storage; _directories: N * (16 bytes red-black-tree node linkage + 24 bytes value); _directories: element: _value: Capacity + 1 bytes when capacity exceeds 15-byte SSO]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * Confidence: medium; compile-time sizeof on the concrete target remains authoritative for ABI-sensitive/opaque members.
- * End ESPressio Memory Audit
- */
+
 class MemoryFileStorage final : public IFileStorage {
 private:
     static constexpr auto ExternalPreferred =

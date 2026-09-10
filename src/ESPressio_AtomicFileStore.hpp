@@ -7,14 +7,7 @@ namespace ESPressio::Persistence {
 
 /// <summary>Provides failure-resilient file replacement using temporary and backup renames on an <c>IFileStorage</c> backend.</summary>
 /// <remarks>The underlying backend must be ready and support the <c>Rename</c> capability. Transient derived paths prefer external memory so atomic file operations do not consume scarce internal DRAM.</remarks>
-/**
- * ESPressio Memory Audit
- * Members:
- * - _storage (IFileStorage&): 4 bytes [0 bytes dynamic allocation]
- * Total Memory: 4 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 class AtomicFileStore final {
 public:
     /// <summary>Creates an atomic replacement helper over the supplied file-storage backend.</summary>

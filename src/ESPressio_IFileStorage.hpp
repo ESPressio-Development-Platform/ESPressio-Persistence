@@ -6,13 +6,7 @@
 namespace ESPressio::Persistence {
 
 /// <summary>Provides sequential access to one already-open file without reopening the underlying backend for every chunk.</summary>
-/**
- * ESPressio Memory Audit
- * Members: none; polymorphic/virtual-base object metadata is included in the total.
- * Total Memory: 4 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 class IFileReadStream {
 public:
     virtual ~IFileReadStream() = default;
@@ -38,14 +32,7 @@ public:
 using FileReadStreamPtr = System::Memory::PolymorphicUniquePtr<IFileReadStream>;
 
 /// <summary>Abstract filesystem-like persistence backend supporting files, directories, metadata, and enumeration.</summary>
-/**
- * ESPressio Memory Audit
- * Inherited Memory Total: 4 bytes [0 bytes dynamic allocation]
- * Members: none; polymorphic/virtual-base object metadata is included in the total.
- * Total Memory: 4 bytes [0 bytes dynamic allocation]
- * Basis: ESP32/Xtensa ILP32 reference ABI (4-byte pointers/size_t); ESPressio stateful allocators/deleters included; ABI-sensitive STL/platform internals are identified explicitly.
- * End ESPressio Memory Audit
- */
+
 class IFileStorage : public IStorageBackend {
 public:
     ~IFileStorage() override = default;
