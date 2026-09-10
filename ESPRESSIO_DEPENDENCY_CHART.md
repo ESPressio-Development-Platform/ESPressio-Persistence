@@ -1,9 +1,9 @@
-# ESPressio Persistence dependency position — 0.3.2
+# ESPressio Persistence dependency position
 
 ESPressio Persistence keeps its **core storage layer dependency-free** while exposing opt-in typed and protected-typed integrations.
 
 ```text
-Persistence core 0.3.2
+Persistence core
     -> none
 
 Persistence Serializable integration

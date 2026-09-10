@@ -4,9 +4,7 @@ A capability-aware persistence foundation for the ESPressio Development Platform
 
 ESPressio Persistence gives application code a stable way to store and retrieve data without coupling domain logic to LittleFS, SPIFFS, FAT, SD cards, Preferences/NVS, or another concrete storage implementation.
 
-## Current version — 0.3.2
-
-During the release restructuring, typed persistence is validated against ESPressio Serializable `main`, and protected typed persistence is validated against ESPressio Security `main`. The public storage and persistence APIs introduced through 0.3.0 are unchanged.
+Typed persistence consumes ESPressio Serializable, and protected typed persistence consumes ESPressio Security. The public storage and persistence APIs remain unchanged during the active platform-abstraction tranche.
 
 The active platform-abstraction tranche separates **storage semantics** from **target implementations**. ESPressio-Persistence owns `IStorageBackend`, `IFileStorage`, `IKeyValueStorage`, atomic replacement, serialization integration and persistence policy. ESP32-specific backends now live in **ESPressio-ESP32**.
 
