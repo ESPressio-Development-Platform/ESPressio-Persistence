@@ -61,7 +61,7 @@ lib_deps =
     https://github.com/ESPressio-Development-Platform/ESPressio-ESP32.git#main
 ```
 
-Typed Serializable persistence additionally consumes Serializable; protected typed persistence additionally consumes Security. During the release restructuring, consume those ESPressio dependencies from their `main` branches until the new platform-wide 1.0.0 release generation is published.
+Typed Serializable persistence additionally consumes Serializable; protected typed persistence additionally consumes Security. During the release restructuring, consume those ESPressio dependencies from their `main` branches until the new platform-wide release generation is published.
 
 Headers are deliberately opt-in:
 
@@ -97,7 +97,7 @@ Assume a normal Serializable configuration:
 
 ```cpp
 class DeviceConfiguration final
-    : public ESPressio::Serializable::Serializable<DeviceConfiguration> {
+: public ESPressio::Serializable::Serializable<DeviceConfiguration> {
 
     ESPRESSIO_SERIALIZABLE_TYPE(DeviceConfiguration)
     ESPRESSIO_SERIALIZABLE_SCHEMA_VERSION(1)
@@ -271,7 +271,7 @@ The protected overload accepts `preferAtomicFileReplace=false` when a caller del
 
 # Typed unprotected persistence
 
-The ordinary typed APIs introduced in 0.2.0 remain available through `ESPressio_Persistence_Serializable.hpp` and use ESPB `BinaryArchive` directly.
+The ordinary typed APIs introduced remain available through `ESPressio_Persistence_Serializable.hpp` and use ESPB `BinaryArchive` directly.
 
 ```cpp
 LittleFSStorage files(false);
@@ -415,7 +415,6 @@ Persistence protected Serializable integration
 
 Persistence itself never depends directly on a filesystem SDK, cipher, key provider or concrete Security implementation.
 
-See [ESPRESSIO_DEPENDENCY_CHART.md](ESPRESSIO_DEPENDENCY_CHART.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [PLATFORM_ABSTRACTIONS.md](PLATFORM_ABSTRACTIONS.md).
 
 # Reliability principles
 
