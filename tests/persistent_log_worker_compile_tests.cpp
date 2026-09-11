@@ -34,11 +34,12 @@ public:
 
 int main() {
     PersistentLogWorkerConfiguration configuration;
-    assert(configuration.TaskConfiguration.Priority == 1U);
-    assert(configuration.TaskConfiguration.Core == -1);
-    assert(configuration.TaskConfiguration.QueueDepth == 1U);
-    assert(configuration.TaskConfiguration.OverflowPolicy == Task::TaskQueueOverflowPolicy::Reject);
+    assert(configuration.ExecutorConfiguration.Execution.Priority == 1U);
+    assert(configuration.ExecutorConfiguration.Execution.Core == -1);
+    assert(configuration.ExecutorConfiguration.QueueDepth == 1U);
+    assert(configuration.ExecutorConfiguration.OverflowPolicy == Task::TaskQueueOverflowPolicy::Reject);
     assert(configuration.FlushQuantum == 2U);
+    assert(configuration.ExecutorConfiguration.QueueMemoryPolicy == Task::TaskMemoryPolicy::Internal);
 
     CompileOnlyPersistentSink sink;
     PersistentLogWorker<CompileOnlyPersistentSink> worker(sink, configuration);

@@ -510,3 +510,5 @@ Core and host coverage includes memory-backend conformance, durable replacement 
 # License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+The optional persistent log worker now uses `PersistentLogWorkerConfiguration::ExecutorConfiguration`: physical fields are under `.Execution`, while QueueDepth/OverflowPolicy remain executor fields. Its coalesced token FIFO has one inline slot and its fixed member thunk runs on Task T1. A joinable System execution provider is required; no closure or force-delete worker fallback is retained.

@@ -23,22 +23,22 @@ enum class PersistentLogWorkerStopMode : std::uint8_t {
 /// <summary>Configuration for the dedicated persistent-log storage task.</summary>
 
 struct PersistentLogWorkerConfiguration final {
-    Task::TaskConfiguration TaskConfiguration{};
+    Task::TaskExecutorConfiguration ExecutorConfiguration{};
     /// <summary>Maximum sink work items written by one worker wake.</summary>
     std::size_t FlushQuantum{2U};
     /// <summary>Maximum sink work items written by DrainBounded shutdown.</summary>
     std::size_t ShutdownDrainMaximumItems{16U};
 
     PersistentLogWorkerConfiguration() noexcept {
-        TaskConfiguration.Name = "persistentLog";
-        TaskConfiguration.StackSize = 4096U;
-        // Deliberately below ordinary Thread/RadioWorker priority 2 and RadioControlWorker priority 4.
-        TaskConfiguration.Priority = 1U;
-        TaskConfiguration.Core = -1;
+        ExecutorConfiguration.Execution.Name = "persistentLog";
+        ExecutorConfiguration.Execution.StackSize = 4096U;
+        // Storage work uses a low execution priority; transport service priority is independently composed.
+        ExecutorConfiguration.Execution.Priority = 1U;
+        ExecutorConfiguration.Execution.Core = -1;
         // This is a coalesced wake-token queue, never a second log-record queue.
-        TaskConfiguration.QueueDepth = 1U;
-        TaskConfiguration.OverflowPolicy = Task::TaskQueueOverflowPolicy::Reject;
-        TaskConfiguration.MemoryPolicy = Task::TaskMemoryPolicy::PreferExternal;
+        ExecutorConfiguration.QueueDepth = 1U;
+        ExecutorConfiguration.OverflowPolicy = Task::TaskQueueOverflowPolicy::Reject;
+        ExecutorConfiguration.Execution.MemoryPolicy = Task::TaskMemoryPolicy::PreferExternal;
     }
 };
 
@@ -86,7 +86,7 @@ public:
     ) :
         _sink(&sink),
         _configuration(configuration),
-        _executor(configuration.TaskConfiguration) {}
+        _executor(configuration.ExecutorConfiguration) {}
 
     ~PersistentLogWorker() override {
         Stop(PersistentLogWorkerStopMode::PreserveQueued);
@@ -101,7 +101,7 @@ public:
         if (_sink == nullptr || _configuration.FlushQuantum == 0U) {
             return Task::TaskExecutionStatus::InvalidConfiguration;
         }
-        return _executor.Initialize([this](const std::uint8_t&) { ServiceWake(); });
+        return _executor.template Initialize<PersistentLogWorker, &PersistentLogWorker::ExecuteWake>(*this);
     }
 
     Task::TaskExecutionStatus Start() {
@@ -197,6 +197,8 @@ public:
     const TPersistentSink& Sink() const noexcept { return *_sink; }
 
 private:
+    void ExecuteWake(const std::uint8_t&) noexcept { ServiceWake(); }
+
     void ServiceWake() noexcept {
         if (_sink == nullptr || !_running.load(std::memory_order_acquire)) {
             _wakeOutstanding.store(false, std::memory_order_release);
@@ -223,7 +225,7 @@ private:
 
     TPersistentSink* _sink{nullptr};
     PersistentLogWorkerConfiguration _configuration{};
-    Task::TaskExecutor<std::uint8_t> _executor;
+    Task::TaskExecutor<std::uint8_t, 1> _executor;
     std::atomic<bool> _running{false};
     std::atomic<bool> _wakeOutstanding{false};
     std::atomic<std::uint32_t> _workSignals{0U};
