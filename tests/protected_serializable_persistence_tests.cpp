@@ -1,4 +1,5 @@
 #include <ESPressio_Persistence.hpp>
+#include "DurableFileModel.hpp"
 #include <ESPressio_Persistence_Serializable_Security.hpp>
 
 #include <cassert>
@@ -90,12 +91,11 @@ int main() {
     Serializable::SerializationProtectionConfig protection(protector, "ESPressio.WiFi.Configuration");
     ProtectedConfiguration source("ESPressio-Lab", "secret", 6);
 
-    MemoryFileStorage files; assert(files.Initialize() == StorageStatus::Success);
+    DurableFileModel files; assert(files.Initialize() == StorageStatus::Success);
     auto fileSave = SaveSerializable(files, "/wifi.bin", source, protection);
     assert(fileSave.Success());
     bool exists=false; assert(files.Exists("/wifi.bin",exists)==StorageStatus::Success && exists);
     assert(files.Exists("/wifi.bin.tmp",exists)==StorageStatus::Success && !exists);
-    assert(files.Exists("/wifi.bin.bak",exists)==StorageStatus::Success && !exists);
     ProtectedConfiguration fromFile;
     auto fileLoad = LoadSerializable(files, "/wifi.bin", fromFile, protection);
     assert(fileLoad.Success()); AssertValue(fromFile);

@@ -252,20 +252,95 @@ if (!result) {
 
 This lets callers distinguish storage/media failures from key/authentication failures and from schema/deserialization failures without coupling Persistence to a logging or serial implementation.
 
-# File atomicity
+# Durable records and runtime identity
 
-Protected file saves still use `AtomicFileStore` automatically when the backend advertises rename support:
+`IAtomicRecordStore` is the common bounded durability contract. `AtomicRecordKey` owns at most 32 bytes. `AtomicRecordCapabilities` reports finite record limits and explicit durable-old-or-new/bounded-operation guarantees. `Recover`, `Read`, `ReplaceAtomically` and `RemoveAfterCommit` never retain caller buffers. Removal is valid only after the owning semantic record durably releases that payload.
 
-```text
-serialize
-protect
-write temporary
-backup existing target
-promote temporary
-rollback on promotion failure
+```cpp
+#include <ESPressio_Persistence.hpp>
+#include <array>
+#include <cassert>
+using namespace ESPressio::Persistence;
+
+AtomicRecordStatus recordExample(IFileStorage& files) {
+    AtomicRecordKey key;
+    assert(AtomicRecordKey::TryCreate("configuration", key));
+    assert(key.Size() == 13 && key.Data()[0] == 'c');
+    const std::array<AtomicRecordKey, 1> keys{key};
+    AtomicFileRecordStore<64, 1> records(files, keys, "/");
+    auto capabilities = records.Capabilities();
+    if (!capabilities.DurableOldOrNew || !capabilities.BoundedOperations)
+        return AtomicRecordStatus::NotSupported;
+    auto status = records.Recover();
+    if (status != AtomicRecordStatus::Success) return status;
+    const std::array<std::uint8_t, 3> value{1, 2, 3};
+    status = records.ReplaceAtomically(key, value.data(), value.size());
+    if (status != AtomicRecordStatus::Success) return status;
+    std::array<std::uint8_t, 64> restored{};
+    std::size_t size = 0;
+    return records.Read(key, restored.data(), restored.size(), size);
+}
+
+// Invoke only after a successful durable ledger/snapshot retirement commit.
+AtomicRecordStatus removeRetiredPayload(IAtomicRecordStore& records, AtomicRecordKey key) {
+    return records.RemoveAfterCommit(key);
+}
 ```
 
-The protected overload accepts `preferAtomicFileReplace=false` when a caller deliberately wants direct replacement.
+`AtomicFileRecordStore<MaximumRecordBytes,RecordCount>` predeclares a fixed key set and existing directory. Each record has a 64-byte versioned envelope with its key, monotonic generation, payload length and CRC32. A generation never wraps. Capacity limits are maximum admitted sizes/key counts; backend media exhaustion remains an explicit failure. The store uses one maximum-sized scratch buffer across its owner-serialized calls. Corrupt records fail recovery; temporary files are never accepted as published history.
+
+`RuntimeIncarnationAllocator` uses a 40-byte specialized record containing format/length, DeviceIdentifier, generation, LastCommitted and CRC32. Generation is LastCommitted+1 in a 64-bit field. Zero high water means deliberately provisioned; usable incarnations are 1 through UINT32_MAX. The final value never wraps.
+
+```cpp
+#include <ESPressio_Persistence.hpp>
+using namespace ESPressio;
+using namespace ESPressio::Persistence;
+
+// Separate operator/factory provisioning: the identity must be new, or remote history
+// must already have been explicitly invalidated after a destructive store reset.
+RuntimeIncarnationStatus provisionNewDevice(IAtomicRecordStore& records, System::DeviceIdentifier device) {
+    RuntimeIncarnationAllocator allocator(records);
+    return allocator.Provision(device, IncarnationProvisioningEvidence::NewDeviceIdentifier);
+}
+
+RuntimeIncarnationResult bootSystem(IAtomicRecordStore& records, System::DeviceIdentifier device) {
+    RuntimeIncarnationAllocator allocator(records);
+    const auto status = allocator.ReadProvisioningStatus(device);
+    // Inspect status.Status and status.LastCommitted for diagnostics; never treat them as installed identity.
+    (void)status;
+    return allocator.AllocateNext(device);
+}
+
+RuntimeIncarnationRecord::Bytes inspectRecord(System::DeviceIdentifier device) {
+    RuntimeIncarnationRecord record{device, 0};
+    auto encoded = record.Encode();
+    RuntimeIncarnationRecord decoded;
+    if (!RuntimeIncarnationRecord::Decode(encoded, decoded)) return {};
+    return encoded;
+}
+```
+
+For a file-backed incarnation provider, predeclare `RuntimeIncarnationAllocator::RecordKey()` in an `AtomicFileRecordStore<40,1>`. Bootstrap calls `AllocateNext` only after the provider is ready. It validates the record, commits H+1 durably, and only then installs `System::RuntimeIdentity`. Success/AlreadyInstalled carries the installed identity. All other outcomes leave identity unavailable. A committed value lost before installation is burned; the next process advances again.
+
+Provisioning is never automatic. Missing records are Unprovisioned; corrupt, mismatched and exhausted records are not overwritten. Reprovisioning after erasure requires a new DeviceIdentifier or externally invalidated remote history. A failed bootstrap is sticky for its process, including ambiguous commit; explicit provisioning can prepare a later boot but cannot clear that failed attempt. A second allocator or restarted service returns AlreadyInstalled without reading or writing storage. Later storage loss does not clear System's already committed identity.
+
+Concrete platform backends must provide durability and boundedness evidence. The volatile memory backend is deliberately rejected for these bindings. Local-only services can remain available when identity bootstrap fails. No production hardware durability is inferred from the host fault model.
+
+See [foundation validation](docs/FOUNDATION_VALIDATION.md) and [backend requirements](docs/BACKENDS.md).
+
+# File atomicity
+
+General and protected file saves require proven durable atomic replacement by default. `AtomicFileStore` uses this order:
+
+1. Write a bounded `.tmp` sibling.
+2. `SyncFile` commits its data and length.
+3. `ReplaceFileAtomically` publishes the prepared file over the target.
+4. `SyncDirectory` commits the parent namespace.
+
+A successful ordinary `Write` or `Rename` does not establish durability. Unsupported backends return `NotSupported` before writes. Publication/sync failure returns `CommitAmbiguous`; callers must not expose an unconfirmed candidate or roll it back. Derived paths use two fixed arrays, with no heap fallback.
+
+For an explicitly non-durable general-purpose save, set `SerializablePersistenceOptions::RequireAtomicFileReplace=false`, or pass `requireAtomicFileReplace=false` to the protected overload. There is no automatic downgrade. Primitive identity, execution history/results and authoritative State persistence always use `IAtomicRecordStore` with durable, bounded guarantees.
+
 
 # Typed unprotected persistence
 
@@ -430,7 +505,7 @@ Persistence itself never depends directly on a filesystem SDK, cipher, key provi
 
 # Testing
 
-Core and host coverage includes memory-backend conformance, atomic replacement and rollback, typed file/key-value round trips, malformed data, resource limits, protected round trips, authenticated-context rejection, atomic cleanup and unprotected compatibility. ESP32 backend conformance belongs with the ESPressio-ESP32 integration build now that those concrete implementations are platform-owned.
+Core and host coverage includes memory-backend conformance, durable replacement and interrupted-publication recovery, typed file/key-value round trips, malformed data, resource limits, protected round trips, authenticated-context rejection, bounded record validation and general unprotected round trips. ESP32 backend conformance belongs with the ESPressio-ESP32 integration build now that those concrete implementations are platform-owned.
 
 # License
 

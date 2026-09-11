@@ -197,6 +197,8 @@ jobs:
           Security::StaticKeyProvider keys;
           Security::RandomSource randomSource;
           PersistentLogWorkerConfiguration persistentWorkerConfiguration;
+          std::array<AtomicRecordKey, 1> incarnationKeys{RuntimeIncarnationAllocator::RecordKey()};
+          AtomicFileRecordStore<40, 1> incarnationRecords(files, incarnationKeys, "/");
 
           void setup() {
               uint8_t key[32]{};
@@ -207,7 +209,9 @@ jobs:
               Security::DataProtector protector(ciphers, keys, randomSource);
               Serializable::SerializationProtectionConfig protection(protector, "test.config");
               Configuration value;
-              (void)SaveSerializable(files, "/value.bin", value, protection);
+              // This compile consumer uses volatile storage explicitly; it cannot establish durable identity.
+              (void)incarnationRecords.Recover(); // NotSupported for MemoryFileStorage.
+              (void)SaveSerializable(files, "/value.bin", value, protection, false);
               (void)LoadSerializable(files, "/value.bin", value, protection);
               (void)SaveSerializable(values, "value", value, protection);
               (void)LoadSerializable(values, "value", value, protection);

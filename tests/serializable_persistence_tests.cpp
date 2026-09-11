@@ -1,4 +1,5 @@
 #include <ESPressio_Persistence.hpp>
+#include "DurableFileModel.hpp"
 #include <ESPressio_Persistence_Serializable.hpp>
 
 #include <cassert>
@@ -50,7 +51,7 @@ static void AssertConfiguration(
 }
 
 static void TestFileRoundTripAndAtomicCleanup() {
-    MemoryFileStorage storage;
+    DurableFileModel storage;
     assert(storage.Initialize() == StorageStatus::Success);
 
     DeviceConfiguration source;
@@ -63,7 +64,6 @@ static void TestFileRoundTripAndAtomicCleanup() {
     bool exists = false;
     assert(storage.Exists("/device.bin", exists) == StorageStatus::Success && exists);
     assert(storage.Exists("/device.bin.tmp", exists) == StorageStatus::Success && !exists);
-    assert(storage.Exists("/device.bin.bak", exists) == StorageStatus::Success && !exists);
 
     DeviceConfiguration restored;
     restored.Set(1, "wrong", false);
@@ -90,7 +90,7 @@ static void TestKeyValueRoundTrip() {
 }
 
 static void TestMissingValuesPreserveStorageStatus() {
-    MemoryFileStorage files;
+    DurableFileModel files;
     MemoryKeyValueStorage values;
     assert(files.Initialize() == StorageStatus::Success);
     assert(values.Initialize() == StorageStatus::Success);
@@ -109,7 +109,7 @@ static void TestMissingValuesPreserveStorageStatus() {
 }
 
 static void TestMalformedPayloadDetection() {
-    MemoryFileStorage storage;
+    DurableFileModel storage;
     assert(storage.Initialize() == StorageStatus::Success);
 
     const uint8_t invalid[] = {0x01, 0x02, 0x03, 0x04};
@@ -125,7 +125,7 @@ static void TestMalformedPayloadDetection() {
 }
 
 static void TestPayloadLimitOnSaveAndLoad() {
-    MemoryFileStorage storage;
+    DurableFileModel storage;
     assert(storage.Initialize() == StorageStatus::Success);
 
     DeviceConfiguration source;
@@ -148,7 +148,7 @@ static void TestPayloadLimitOnSaveAndLoad() {
 }
 
 static void TestInvalidLocatorAndInitialization() {
-    MemoryFileStorage storage;
+    DurableFileModel storage;
     DeviceConfiguration object;
 
     auto result = SaveSerializable(storage, "/value.bin", object);
@@ -160,7 +160,7 @@ static void TestInvalidLocatorAndInitialization() {
     assert(result.Status == SerializablePersistenceStatus::InvalidArgument);
 }
 
-static void TestOrdinaryReplaceFallback() {
+static void TestOrdinaryReplacementRequiresExplicitChoice() {
 
 class NonRenamingStorage final : public IFileStorage {
     public:
@@ -187,12 +187,16 @@ class NonRenamingStorage final : public IFileStorage {
 
     assert(storage.Initialize() == StorageStatus::Success);
     DeviceConfiguration source;
-    source.Set(22050, "fallback", true);
-    assert(SaveSerializable(storage, "/fallback.bin", source).Success());
+    source.Set(22050, "ordinary", true);
+    const auto rejected=SaveSerializable(storage, "/ordinary.bin", source);
+    assert(!rejected.Success() && rejected.Storage==StorageStatus::NotSupported);
+    SerializablePersistenceOptions ordinary;
+    ordinary.RequireAtomicFileReplace=false;
+    assert(SaveSerializable(storage, "/ordinary.bin", source,ordinary).Success());
 
     DeviceConfiguration restored;
-    assert(LoadSerializable(storage, "/fallback.bin", restored).Success());
-    AssertConfiguration(restored, 22050, "fallback", true);
+    assert(LoadSerializable(storage, "/ordinary.bin", restored).Success());
+    AssertConfiguration(restored, 22050, "ordinary", true);
 }
 
 int main() {
@@ -202,6 +206,6 @@ int main() {
     TestMalformedPayloadDetection();
     TestPayloadLimitOnSaveAndLoad();
     TestInvalidLocatorAndInitialization();
-    TestOrdinaryReplaceFallback();
+    TestOrdinaryReplacementRequiresExplicitChoice();
     return 0;
 }

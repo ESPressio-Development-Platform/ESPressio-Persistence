@@ -40,7 +40,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     const char* path,
     const TObject& object,
     const Serializable::SerializationProtectionConfig& protection,
-    bool preferAtomicFileReplace = true
+    bool requireAtomicFileReplace = true
 ) {
     if (!Detail::ValidLocator(path)) {
         return Detail::MakeProtectedStorageFailure(StorageStatus::InvalidArgument);
@@ -59,10 +59,7 @@ ProtectedSerializablePersistenceResult SaveSerializable(
     result.PayloadBytes = bytes.size();
     if (!result.Serialization) return result;
 
-    if (
-        preferAtomicFileReplace &&
-        HasCapability(storage.GetCapabilities(), StorageCapability::Rename)
-    ) {
+    if (requireAtomicFileReplace) {
         AtomicFileStore atomic(storage);
         result.Storage = atomic.Replace(path, bytes.data(), bytes.size());
     } else {

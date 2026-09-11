@@ -38,7 +38,7 @@ public:
     const char* GetBackendName() const override { return "MemoryKeyValueStorage"; }
     /// <inheritdoc/>
     StorageCapability GetCapabilities() const override {
-        return StorageCapability::KeyValue | StorageCapability::AtomicReplace;
+        return StorageCapability::KeyValue;
     }
     /// <inheritdoc/>
     StorageStatistics GetStatistics() const override { return {}; }

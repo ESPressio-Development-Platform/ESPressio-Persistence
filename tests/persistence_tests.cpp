@@ -1,4 +1,5 @@
 #include <ESPressio_Persistence.hpp>
+#include "DurableFileModel.hpp"
 #include <array>
 #include <cassert>
 #include <cstring>
@@ -91,57 +92,28 @@ static void TestDirectoriesAndListing() {
 }
 
 
-class FailingPromotionStorage final : public IFileStorage {
-public:
-    StorageStatus Initialize() override { return _inner.Initialize(); }
-    void Shutdown() override { _inner.Shutdown(); }
-    bool IsReady() const override { return _inner.IsReady(); }
-    const char* GetBackendName() const override { return "FailingPromotionStorage"; }
-    StorageCapability GetCapabilities() const override { return _inner.GetCapabilities(); }
-    StorageStatistics GetStatistics() const override { return _inner.GetStatistics(); }
-    StorageStatus Exists(const char* p, bool& e) const override { return _inner.Exists(p, e); }
-    StorageStatus Stat(const char* p, StorageEntry& e) const override { return _inner.Stat(p, e); }
-    StorageStatus Read(const char* p, uint64_t o, uint8_t* b, std::size_t c, std::size_t& r) const override { return _inner.Read(p, o, b, c, r); }
-    StorageStatus Write(const char* p, const uint8_t* d, std::size_t s, WriteMode m) override { return _inner.Write(p, d, s, m); }
-    StorageStatus Remove(const char* p) override { return _inner.Remove(p); }
-    StorageStatus Rename(const char* from, const char* to) override {
-        if (_failPromotion && std::strstr(from, ".tmp") != nullptr) {
-            _failPromotion = false;
-            return StorageStatus::IoError;
-        }
-        return _inner.Rename(from, to);
-    }
-    StorageStatus CreateDirectory(const char* p) override { return _inner.CreateDirectory(p); }
-    StorageStatus RemoveDirectory(const char* p) override { return _inner.RemoveDirectory(p); }
-    StorageStatus List(const char* p, StorageListCallback c, void* x) const override { return _inner.List(p, c, x); }
-    void FailNextPromotion() { _failPromotion = true; }
-private:
-    MemoryFileStorage _inner;
-    bool _failPromotion = false;
-};
-
-static void TestAtomicReplacementAndRollback() {
-    FailingPromotionStorage storage;
+static void TestDurableAtomicReplacementAndAmbiguousPublication() {
+    DurableFileModel storage;
     assert(storage.Initialize() == StorageStatus::Success);
     AtomicFileStore atomic(storage);
     const uint8_t oldValue[] = {'o','l','d'};
     const uint8_t newValue[] = {'n','e','w'};
-    assert(storage.Write("/settings.bin", oldValue, sizeof(oldValue), WriteMode::Replace) == StorageStatus::Success);
+    assert(atomic.Replace("/settings.bin", oldValue, sizeof(oldValue)) == StorageStatus::Success);
     assert(atomic.Replace("/settings.bin", newValue, sizeof(newValue)) == StorageStatus::Success);
-
-    storage.FailNextPromotion();
+    storage.FailAt=DurableFileModel::Cut::BeforePublish;
     const uint8_t failedValue[] = {'b','a','d'};
-    assert(atomic.Replace("/settings.bin", failedValue, sizeof(failedValue)) == StorageStatus::IoError);
-
+    assert(atomic.Replace("/settings.bin", failedValue, sizeof(failedValue)) == StorageStatus::CommitAmbiguous);
+    storage.PowerLoss();
     std::array<uint8_t, 3> result{};
     std::size_t bytesRead = 0;
     assert(storage.Read("/settings.bin", 0, result.data(), result.size(), bytesRead) == StorageStatus::Success);
-    assert(bytesRead == 3);
-    assert(std::memcmp(result.data(), newValue, 3) == 0);
-    bool temporary = true;
-    bool backup = true;
-    assert(storage.Exists("/settings.bin.tmp", temporary) == StorageStatus::Success && !temporary);
-    assert(storage.Exists("/settings.bin.bak", backup) == StorageStatus::Success && !backup);
+    assert(bytesRead == 3 && std::memcmp(result.data(), newValue, 3) == 0);
+    MemoryFileStorage volatileStorage;
+    assert(volatileStorage.Initialize()==StorageStatus::Success);
+    AtomicFileStore unsupported(volatileStorage);
+    assert(unsupported.Replace("/settings.bin",oldValue,sizeof(oldValue))==StorageStatus::NotSupported);
+    bool exists=true;
+    assert(volatileStorage.Exists("/settings.bin",exists)==StorageStatus::Success && !exists);
 }
 
 static void TestKeyValueStorage() {
@@ -175,7 +147,7 @@ int main() {
     TestMemoryFileLifecycleAndValidation();
     TestFileWriteReadAppendStatRenameAndRemove();
     TestDirectoriesAndListing();
-    TestAtomicReplacementAndRollback();
+    TestDurableAtomicReplacementAndAmbiguousPublication();
     TestKeyValueStorage();
     return 0;
 }

@@ -75,6 +75,17 @@ public:
     virtual StorageStatus Remove(const char* path) = 0;
     /// <summary>Renames or moves a storage entry within the backend namespace.</summary>
     virtual StorageStatus Rename(const char* from, const char* to) = 0;
+    /// <summary>Atomically publishes a complete prepared file over a target, including an existing target.</summary>
+    /// <remarks>Success guarantees atomic namespace visibility. Crash recovery before the subsequent directory
+    /// sync must yield either the old complete target or the prepared complete target, never a missing/torn mix.
+    /// A generic Rename implementation does not establish this guarantee. Failure may have published and is ambiguous.</remarks>
+    virtual StorageStatus ReplaceFileAtomically(const char* prepared,const char* target) {
+        (void)prepared; (void)target; return StorageStatus::NotSupported;
+    }
+    /// <summary>Commits all file data/length metadata to durable media before namespace publication.</summary>
+    virtual StorageStatus SyncFile(const char* path) { (void)path; return StorageStatus::NotSupported; }
+    /// <summary>Commits namespace changes for a directory to durable media.</summary>
+    virtual StorageStatus SyncDirectory(const char* path) { (void)path; return StorageStatus::NotSupported; }
     /// <summary>Creates a directory.</summary>
     virtual StorageStatus CreateDirectory(const char* path) = 0;
     /// <summary>Removes a directory.</summary>

@@ -27,7 +27,7 @@ PreferencesStorage values("demo");
 Security::AES256GCMCipher cipher;
 Security::AeadCipherRegistry ciphers;
 Security::StaticKeyProvider keys;
-Security::ESP32RandomSource randomSource;
+Security::RandomSource randomSource;
 
 constexpr std::array<uint8_t,32> ApplicationKey = {
     0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
@@ -49,6 +49,12 @@ void setup() {
     values.Initialize();
 
     DeviceConfiguration source;
+
+    AtomicFileStore atomic(files);
+    if (!atomic.SupportsDurableReplacement()) {
+        Serial.println("File backend lacks durable atomic replacement");
+        return;
+    }
 
     auto fileSaved = SaveSerializable(files, "/device.esdp", source, protection);
     DeviceConfiguration fromFile;

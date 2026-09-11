@@ -21,7 +21,8 @@ enum class StorageStatus : uint8_t {
     Busy,
     IoError,
     PartialWrite,
-    UnknownError
+    UnknownError,
+    CommitAmbiguous
 };
 
 /// <summary>Controls whether file writes replace existing content or append to it.</summary>
@@ -43,7 +44,10 @@ enum class StorageCapability : uint32_t {
     Removable         = 1u << 5,
     CapacityReporting = 1u << 6,
     AtomicReplace     = 1u << 7,
-    SequentialRead    = 1u << 8
+    SequentialRead    = 1u << 8,
+    DurableFileSync   = 1u << 9,
+    DurableDirectorySync = 1u << 10,
+    BoundedOperations = 1u << 11
 };
 
 constexpr StorageCapability operator|(StorageCapability lhs, StorageCapability rhs) {
@@ -102,6 +106,7 @@ inline const char* StorageStatusName(StorageStatus status) {
         case StorageStatus::Busy: return "Busy";
         case StorageStatus::IoError: return "IoError";
         case StorageStatus::PartialWrite: return "PartialWrite";
+        case StorageStatus::CommitAmbiguous: return "CommitAmbiguous";
         default: return "UnknownError";
     }
 }

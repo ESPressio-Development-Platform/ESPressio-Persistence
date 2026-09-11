@@ -1,88 +1,61 @@
 #pragma once
-
+#include <array>
 #include <ESPressio_IFileStorage.hpp>
-#include <ESPressio_Memory.hpp>
 
 namespace ESPressio::Persistence {
-
-/// <summary>Provides failure-resilient file replacement using temporary and backup renames on an <c>IFileStorage</c> backend.</summary>
-/// <remarks>The underlying backend must be ready and support the <c>Rename</c> capability. Transient derived paths prefer external memory so atomic file operations do not consume scarce internal DRAM.</remarks>
-
+/// <summary>Bounded crash-consistent file replacement using explicit durable data and atomic namespace operations.</summary>
+/// <remarks>The caller owns the target and its .tmp sibling and serializes operations. No backup/rollback or
+/// ordinary-Write fallback exists. Unsupported durability is rejected before modifying storage.</remarks>
 class AtomicFileStore final {
+    IFileStorage& _storage;
 public:
-    /// <summary>Creates an atomic replacement helper over the supplied file-storage backend.</summary>
-    explicit AtomicFileStore(IFileStorage& storage) : _storage(storage) {}
-
-    /// <summary>Replaces a target file through temporary-file write, backup rename, and final rename operations.</summary>
-    /// <returns>The first storage failure encountered, or <c>StorageStatus::Success</c> when replacement completes.</returns>
-    StorageStatus Replace(
-        const char* path,
-        const uint8_t* data,
-        std::size_t size
-    ) {
-        if (path == nullptr || *path == '\0' || (data == nullptr && size != 0)) {
-            return StorageStatus::InvalidArgument;
+    /// <summary>Borrows a file backend. Construction performs no storage operation or allocation.</summary>
+    explicit AtomicFileStore(IFileStorage& storage) noexcept : _storage(storage) {}
+    /// <summary>Reports whether the backend declares all crash-durability operations required by this helper.</summary>
+    bool SupportsDurableReplacement() const noexcept {
+        const auto caps=_storage.GetCapabilities();
+        return HasCapability(caps,StorageCapability::AtomicReplace) &&
+            HasCapability(caps,StorageCapability::DurableFileSync) &&
+            HasCapability(caps,StorageCapability::DurableDirectorySync);
+    }
+    /// <summary>Writes/syncs a prepared sibling, atomically publishes it, then durably syncs the parent directory.</summary>
+    /// <remarks>Success means known durable commit. Publication/sync failure returns CommitAmbiguous and never
+    /// rolls back a possibly committed value. Interruptions before publication leave the old target intact.
+    /// Derived paths use two fixed arrays of StorageEntry::MaximumPathLength bytes.</remarks>
+    StorageStatus Replace(const char* path,const std::uint8_t* data,std::size_t size) {
+        if (!path || !*path || (!data && size)) return StorageStatus::InvalidArgument;
+        if (!_storage.IsReady()) return StorageStatus::NotInitialized;
+        if (!SupportsDurableReplacement()) return StorageStatus::NotSupported;
+        constexpr auto capacity=StorageEntry::MaximumPathLength;
+        std::array<char,capacity> temporary{};
+        std::array<char,capacity> parent{};
+        std::size_t length=0,slash=capacity;
+        while (length<capacity && path[length]) {
+            if (path[length]=='/') slash=length;
+            if (length+5>=capacity) return StorageStatus::InvalidArgument;
+            temporary[length]=path[length]; ++length;
         }
-        if (!_storage.IsReady()) {
-            return StorageStatus::NotInitialized;
-        }
-        if (!HasCapability(_storage.GetCapabilities(), StorageCapability::Rename)) {
-            return StorageStatus::NotSupported;
-        }
-
-        // The caller already owns the canonical target path. Avoid duplicating
-        // it solely to append suffixes, and place the two genuinely required
-        // derived paths in external-preferred storage.
-        using PathString = System::Memory::String<
-            System::Memory::MemoryPolicy::ExternalPreferred
-        >;
-        PathString temporary(path);
-        temporary += ".tmp";
-        PathString backup(path);
-        backup += ".bak";
-
-        (void)_storage.Remove(temporary.c_str());
-        (void)_storage.Remove(backup.c_str());
-
-        StorageStatus status = _storage.Write(
-            temporary.c_str(), data, size, WriteMode::Replace
-        );
-        if (status != StorageStatus::Success) {
-            return status;
-        }
-
-        bool targetExists = false;
-        status = _storage.Exists(path, targetExists);
-        if (status != StorageStatus::Success) {
-            (void)_storage.Remove(temporary.c_str());
-            return status;
-        }
-
-        if (targetExists) {
-            status = _storage.Rename(path, backup.c_str());
-            if (status != StorageStatus::Success) {
-                (void)_storage.Remove(temporary.c_str());
-                return status;
-            }
-        }
-
-        status = _storage.Rename(temporary.c_str(), path);
-        if (status != StorageStatus::Success) {
-            if (targetExists) {
-                (void)_storage.Rename(backup.c_str(), path);
-            }
-            (void)_storage.Remove(temporary.c_str());
-            return status;
-        }
-
-        if (targetExists) {
-            (void)_storage.Remove(backup.c_str());
-        }
+        if (!length || length==capacity || path[length-1]=='/') return StorageStatus::InvalidArgument;
+        for (std::size_t i=0;i<5;++i) temporary[length+i]=".tmp"[i];
+        if (slash==capacity) parent[0]='.';
+        else if (slash==0) parent[0]='/';
+        else for (std::size_t i=0;i<slash;++i) parent[i]=path[i];
+        try {
+            auto status=_storage.Remove(temporary.data());
+            if (status!=StorageStatus::Success && status!=StorageStatus::NotFound) return status;
+            status=_storage.Write(temporary.data(),data,size,WriteMode::Replace);
+            if (status!=StorageStatus::Success) return status;
+            status=_storage.SyncFile(temporary.data());
+            if (status!=StorageStatus::Success) return status;
+        } catch (...) { return StorageStatus::IoError; }
+        // From this point onward neither an error nor an exception proves publication did not occur.
+        try {
+            if (_storage.ReplaceFileAtomically(temporary.data(),path)!=StorageStatus::Success)
+                return StorageStatus::CommitAmbiguous;
+            if (_storage.SyncDirectory(parent.data())!=StorageStatus::Success)
+                return StorageStatus::CommitAmbiguous;
+        } catch (...) { return StorageStatus::CommitAmbiguous; }
         return StorageStatus::Success;
     }
-
-private:
-    IFileStorage& _storage;
 };
-
-} // namespace ESPressio::Persistence
+}

@@ -56,8 +56,7 @@ public:
         return StorageCapability::Hierarchical |
                StorageCapability::Directories |
                StorageCapability::Rename |
-               StorageCapability::Append |
-               StorageCapability::AtomicReplace;
+               StorageCapability::Append;
     }
 
     /// <inheritdoc/>

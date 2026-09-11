@@ -39,7 +39,8 @@ inline const char* SerializablePersistenceStatusName(SerializablePersistenceStat
 
 struct SerializablePersistenceOptions {
     std::size_t MaximumPayloadBytes = 64u * 1024u;
-    bool PreferAtomicFileReplace = true;
+    /// <summary>Require proven durable atomic replacement; false explicitly chooses an ordinary general-purpose file write.</summary>
+    bool RequireAtomicFileReplace = true;
     Serializable::BinaryArchiveDecodeLimits DecodeLimits{};
     Serializable::DeserializationOptions Deserialization{};
 };
@@ -116,10 +117,9 @@ SerializablePersistenceResult DecodeSerializable(
         return result;
     }
 
-    // Keep the bounded tree decoder for reads until DirectBinary exposes the
-    // same BinaryArchiveDecodeLimits contract. The direct writer is wire
-    // compatible, so files written above remain readable here without format
-    // or version changes.
+    // General-purpose archive loading retains tree diagnostics/migrations.
+    // Deterministic Primitive persistence uses the bounded codecs and
+    // IAtomicRecordStore instead of this dynamically allocated convenience path.
     Serializable::BinaryArchive archive;
     if (!archive.Load(data, size, options.DecodeLimits)) {
         result.Status = SerializablePersistenceStatus::MalformedPayload;
@@ -160,7 +160,7 @@ SerializablePersistenceResult SaveSerializable(
     if (!result) return result;
 
     StorageStatus status = StorageStatus::Success;
-    if (options.PreferAtomicFileReplace && HasCapability(storage.GetCapabilities(), StorageCapability::Rename)) {
+    if (options.RequireAtomicFileReplace) {
         AtomicFileStore atomic(storage);
         status = atomic.Replace(path, bytes.data(), bytes.size());
     } else {

@@ -44,6 +44,14 @@ void setup() {
 
     DeviceConfiguration configuration;
 
+    // Default file saves require proven durable replacement; a missing capability
+    // is reported explicitly and never downgraded to an ordinary write.
+    AtomicFileStore atomic(files);
+    if (!atomic.SupportsDurableReplacement()) {
+        Serial.println("File backend lacks durable atomic replacement");
+        return;
+    }
+
     auto result = SaveSerializable(
         files,
         "/device-config.espb",

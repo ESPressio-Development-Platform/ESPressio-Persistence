@@ -1,88 +1,24 @@
 # Architecture
 
-ESPressio Persistence keeps storage mechanics below domain serialization and cryptographic policy.
+Persistence core depends on System for platform-neutral identity and storage abstractions. It does not depend on Primitive families, Radio, Mesh or Threads. Serializable, Security and Logging integrations remain explicit opt-in headers.
 
-```text
-application/domain object
-        |
-        v
-ESPressio Serializable
-        |
-        +---- ordinary ESPB --------------------+
-        |                                       |
-        +---- optional authenticated protection |
-                    |                            |
-                    v                            |
-             ESPressio Security                  |
-                    |                            |
-                    +----------------------------+
-                                                 |
-                          +----------------------+
-                          |                      |
-                    IFileStorage          IKeyValueStorage
-                          |                      |
-                  filesystem media          NVS-like stores
+```mermaid
+flowchart TD
+    App["Application bootstrap"] --> Allocator["Incarnation allocator"]
+    Allocator --> Records["Atomic record store"]
+    Allocator --> System["System identity slot"]
+    Records --> Files["Durable file operations"]
+    Files --> Platform["Platform storage backend"]
 ```
 
-## Design boundaries
+The allocator durably advances a device-bound high-water record before installing identity. Exactly one coordinator serves the process; service restarts do not allocate again. A failed bootstrap leaves local-only facilities available and identity-dependent services unavailable. System never calls Persistence.
 
-- `IStorageBackend` owns lifecycle, readiness, capability discovery and statistics.
-- `IFileStorage` owns hierarchical byte-storage semantics.
-- `IKeyValueStorage` owns namespaced key/value byte-storage semantics.
-- `AtomicFileStore` is a policy/helper layered above `IFileStorage`.
-- Concrete ESP32 adapters translate platform storage APIs into ESPressio contracts.
-- Host-memory adapters allow application persistence logic to be tested without hardware.
-- `ESPressio_Persistence_Serializable.hpp` adds optional unprotected typed persistence.
-- `ESPressio_Persistence_Serializable_Security.hpp` adds optional protected typed persistence.
-- Persistence never selects ciphers, manages keys or performs encryption itself.
+`IAtomicRecordStore` exposes only fixed keys and caller-bounded buffers. `AtomicFileRecordStore<M,N>` copies its N keys during construction and uses one M+64 byte scratch buffer. Its versioned, key-bound, generation/integrity envelope is separate from each consumer's semantic record. Recovery validates published records and ignores uncommitted temporary files. Missing, corrupt, unsupported and ambiguous states remain explicit.
 
-## Typed persistence representation
+`AtomicFileStore` requires proven file sync, atomic target replacement and directory sync. It writes and syncs a prepared sibling, publishes it atomically, then syncs its parent directory. Failure after publication may have committed and returns CommitAmbiguous. There is no backup rollback, ordinary-write fallback or hidden dynamic path allocation. A backend must also declare bounded operations before it can bind `AtomicFileRecordStore`.
 
-Typed persistence uses Serializable's ESPB `BinaryArchive`, retaining tree-based migration/default/alias/validation support for records that outlive the firmware version that produced them.
+General `IFileStorage` and `IKeyValueStorage` still provide ordinary storage mechanics. They do not imply P4/C3/C4/S5 atomicity. General typed persistence preserves tree diagnostics/migrations; canonical Primitive persistence uses bounded Serializable codecs and atomic records. General file saves require durable atomic replacement by default; an explicit `RequireAtomicFileReplace=false` selects an ordinary general-purpose write, which is unsuitable for identity/execution/state durability.
 
-Unprotected:
+Protected typed persistence delegates representation/protection to Serializable and Security. Authentication is not a substitute for crash-consistent storage. Persistence does not own ciphers, keys or cryptographic policy.
 
-```text
-Serializable object
-    -> BinaryArchive / ESPB
-    -> storage bytes
-```
-
-Protected:
-
-```text
-Serializable object
-    -> BinaryArchive / ESPB
-    -> SerializationProtectionConfig
-    -> Security::IDataProtector
-    -> authenticated protected bytes
-    -> storage
-```
-
-Loading reverses this order. Authentication/unprotection occurs before BinaryArchive decoding or model deserialization.
-
-## Dependency boundaries
-
-```text
-Persistence core
-    -> none
-
-Persistence typed integration
-    - - -> Serializable
-
-Persistence protected typed integration
-    - - -> Serializable
-            - - -> Security
-```
-
-Persistence has no direct cryptographic dependency. Serializable remains responsible for representation and delegates protection through its optional Security integration.
-
-## Reliability boundaries
-
-- Typed payloads are bounded by explicit archive limits.
-- Protected payloads authenticate before parsing.
-- File saves prefer `AtomicFileStore` when rename is supported.
-- File backends without rename fall back to ordinary replacement when requested.
-- Key/value stores use their backend replacement semantics.
-- Result types retain storage failure separately from serialization/security failure.
-- Power-loss durability still depends on the physical filesystem/media; protection guarantees confidentiality/integrity, not transactional storage by itself.
+See [foundation validation](FOUNDATION_VALIDATION.md) for resource accounting and fault coverage.

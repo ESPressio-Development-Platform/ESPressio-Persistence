@@ -13,6 +13,10 @@ void setup() {
 
     const char message[] = "persistent hello";
     AtomicFileStore atomic(storage);
+    if (!atomic.SupportsDurableReplacement()) {
+        Serial.println("Backend does not provide proven durable atomic replacement");
+        return;
+    }
     const auto status = atomic.Replace(
         "/settings.txt",
         reinterpret_cast<const uint8_t*>(message),
