@@ -76,6 +76,11 @@ jobs:
           repository: ESPressio-Development-Platform/ESPressio-Observable
           ref: primitives_redesign
           path: project/ESPressio-Observable
+      - uses: actions/checkout@v4
+        with:
+          repository: ESPressio-Development-Platform/ESPressio-Primitive
+          ref: primitives_redesign
+          path: project/ESPressio-Primitive
       - name: Compile Serializable persistence tests
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
@@ -92,10 +97,18 @@ jobs:
             -I project/ESPressio-Observable/src \
             project/ESPressio-Persistence/tests/protected_serializable_persistence_tests.cpp \
             -o project/protected_serializable_persistence_tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-error=misleading-indentation \
+            -I project/ESPressio-Persistence/src \
+            -I project/ESPressio-Serializable/src \
+            -I project/ESPressio-Primitive/src \
+            -I project/ESPressio-System/src \
+            project/ESPressio-Persistence/tests/foundation_integration_tests.cpp \
+            -o project/foundation_integration_tests
       - name: Run Serializable persistence tests
         run: |
           project/serializable_persistence_tests
           project/protected_serializable_persistence_tests
+          project/foundation_integration_tests
 
   esp32-compile:
     runs-on: ubuntu-latest
